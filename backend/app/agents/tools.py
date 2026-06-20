@@ -196,4 +196,7 @@ async def get_spending_summary(
     )
 
 
-AGENT_TOOLS = [get_transactions, get_budget_status, get_spending_summary, simulate_scenario, forecast_cashflow]
+QUERY_TOOLS = [get_transactions, get_budget_status, get_spending_summary, forecast_cashflow]
+PLANNING_TOOLS = [simulate_scenario]
+# Kept for any external references; equals the union of both groups.
+AGENT_TOOLS = QUERY_TOOLS + PLANNING_TOOLS
