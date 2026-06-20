@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 30
-    google_api_key: str
+    groq_api_key: str
     expo_push_token_base_url: str = "https://exp.host/--/api/v2/push/send"
     environment: str = "development"
 

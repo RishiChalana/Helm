@@ -29,17 +29,18 @@ async def _generate_insights_for_user(user_id: int) -> None:
         budgets = await list_budgets(user_id, db)
         today = date.today()
 
+        from app.services.budget_service import _resolve_period_dates
+
         for budget in budgets:
-            if budget.period_month != today.month or budget.period_year != today.year:
+            period_start, period_end = _resolve_period_dates(budget)
+            if not (period_start <= today <= period_end):
                 continue
 
             status = await get_budget_status(user_id, budget.id, db)
 
-            # Expected pace: days elapsed / days in month * 100
-            from calendar import monthrange
-
-            days_in_month = monthrange(today.year, today.month)[1]
-            expected_pace = (today.day / days_in_month) * 100
+            total_days = (period_end - period_start).days + 1
+            elapsed_days = (today - period_start).days + 1
+            expected_pace = (elapsed_days / total_days) * 100
             actual_pace = status.pace_percent
             deviation = actual_pace - expected_pace
 

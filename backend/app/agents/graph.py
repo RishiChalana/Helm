@@ -2,24 +2,43 @@
 Phase 1: single LangGraph ReAct agent with multi-turn memory.
 Phase 2 will refactor this into supervisor + sub-agents without changing the tool contracts.
 """
+from datetime import date
 from typing import Annotated
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage, BaseMessage
+from langgraph.graph import StateGraph, END, add_messages
 from typing_extensions import TypedDict
 from app.agents.tools import AGENT_TOOLS
 from app.core.config import get_settings
 
 settings = get_settings()
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    google_api_key=settings.google_api_key,
-).bind_tools(AGENT_TOOLS)
+# parallel_tool_calls=False prevents llama-3.3-70b from falling back to its
+# native XML function-call format, which Groq's API validation rejects.
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    api_key=settings.groq_api_key,
+).bind_tools(AGENT_TOOLS, parallel_tool_calls=False)
 
-tool_node = ToolNode(AGENT_TOOLS)
+# Map tool name → callable for the manual executor below
+_tools_by_name = {t.name: t for t in AGENT_TOOLS}
+
+
+async def tool_node(state: "AgentState") -> "AgentState":
+    """Execute all tool calls in the last AI message and return ToolMessages."""
+    last = state["messages"][-1]
+    results: list[BaseMessage] = []
+    for call in last.tool_calls:
+        tool = _tools_by_name.get(call["name"])
+        if tool is None:
+            content = f"Unknown tool: {call['name']}"
+        else:
+            try:
+                content = str(await tool.ainvoke(call["args"]))
+            except Exception as exc:
+                content = f"Tool error: {exc}"
+        results.append(ToolMessage(content=content, tool_call_id=call["id"]))
+    return {"messages": results}
 
 
 class AgentState(TypedDict):
@@ -51,12 +70,26 @@ def build_graph() -> StateGraph:
 agent_graph = build_graph()
 
 
+def _system_prompt() -> str:
+    today = date.today().isoformat()
+    return (
+        f"Today's date is {today}. "
+        "You are Helm, an AI finance copilot. "
+        "All monetary amounts are in Indian Rupees. Always format money as ₹X,XXX — never use $. "
+        "When the user mentions a relative time period ('this month', 'last week', 'this year', etc.) "
+        "compute the exact ISO start_date and end_date yourself from today's date before calling any tool — "
+        "never ask the user to supply dates they didn't explicitly provide. "
+        "For questions about total spending or spending by category, prefer get_spending_summary over get_transactions. "
+        "get_transactions is for fetching individual line-item records; get_spending_summary is for totals and breakdowns."
+    )
+
+
 async def run_agent(history: list[dict], user_message: str) -> str:
     """
     history: list of {"role": "user"|"assistant", "content": str}
     Returns the assistant's reply string.
     """
-    messages: list[BaseMessage] = []
+    messages: list[BaseMessage] = [SystemMessage(content=_system_prompt())]
     for m in history:
         if m["role"] == "user":
             messages.append(HumanMessage(content=m["content"]))

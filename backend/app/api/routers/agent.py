@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
@@ -47,7 +47,16 @@ async def chat(
     # Inject DB context into tools
     set_tool_context(current_user.id, db)
 
-    reply = await run_agent(history, body.message)
+    try:
+        reply = await run_agent(history, body.message)
+    except Exception as exc:
+        exc_str = str(exc)
+        if "ResourceExhausted" in exc_str or "429" in exc_str or "quota" in exc_str.lower():
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="AI provider rate limit reached. Please try again in a minute.",
+            )
+        raise
 
     # Persist both turns
     db.add(Message(conversation_id=conversation.id, role=MessageRole.user, content=body.message))

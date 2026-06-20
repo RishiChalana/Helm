@@ -57,26 +57,39 @@ async def get_transactions(
 
 
 @tool
-async def get_budget_status(budget_id: int | None = None) -> list[dict] | dict:
+async def get_budget_status(
+    category: str | None = None,
+    budget_id: int | None = None,
+) -> list[dict] | dict:
     """
-    Return current spend, limit, pace projection, and over-budget flag.
-    If budget_id is omitted, returns status for all budgets in the current month.
+    Return current spend, limit, pace projection, and over-budget flag for a budget.
+    Prefer passing category (e.g. "Food") — budget_id is an optional override.
+    If both are omitted, returns status for ALL budgets in the current month.
     """
-    from app.services.budget_service import list_budgets, get_budget_status as _get_status
+    from app.services.budget_service import (
+        list_budgets,
+        get_budget_status as _get_status,
+        get_budget_by_category,
+    )
 
     user_id, db = _ctx()
 
+    if category is not None:
+        b = await get_budget_by_category(user_id, category, db)
+        s = await _get_status(user_id, b.id, db)
+        return _status_to_dict(s)
+
     if budget_id is not None:
-        status = await _get_status(user_id, budget_id, db)
-        return _status_to_dict(status)
+        s = await _get_status(user_id, budget_id, db)
+        return _status_to_dict(s)
 
     budgets = await list_budgets(user_id, db)
     today = date.today()
     results = []
     for b in budgets:
         if b.period_month == today.month and b.period_year == today.year:
-            status = await _get_status(user_id, b.id, db)
-            results.append(_status_to_dict(status))
+            s = await _get_status(user_id, b.id, db)
+            results.append(_status_to_dict(s))
     return results
 
 
@@ -159,4 +172,28 @@ async def forecast_cashflow(horizon_days: int = 30) -> dict:
     }
 
 
-AGENT_TOOLS = [get_transactions, get_budget_status, simulate_scenario, forecast_cashflow]
+@tool
+async def get_spending_summary(
+    start_date: str,
+    end_date: str,
+    category: str | None = None,
+) -> dict:
+    """
+    Return total expense, total income, net, and a breakdown by category for a date range.
+    Use this for questions like 'how much did I spend', 'what did I spend on X'.
+    Dates must be ISO format (YYYY-MM-DD).
+    Use get_transactions only when individual line items are needed.
+    """
+    from app.services.transaction_service import get_spending_summary as _summary
+
+    user_id, db = _ctx()
+    return await _summary(
+        user_id,
+        date.fromisoformat(start_date),
+        date.fromisoformat(end_date),
+        category,
+        db,
+    )
+
+
+AGENT_TOOLS = [get_transactions, get_budget_status, get_spending_summary, simulate_scenario, forecast_cashflow]

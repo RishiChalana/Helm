@@ -80,3 +80,60 @@ async def get_spend_by_category(
         .group_by(Transaction.category)
     )
     return {row[0]: row[1] for row in result.all()}
+
+
+async def get_spending_summary(
+    user_id: int,
+    start_date: date,
+    end_date: date,
+    category: str | None,
+    db: AsyncSession,
+) -> dict:
+    from app.models.transaction import TransactionType
+    from sqlalchemy import func
+
+    base_conditions = [
+        Transaction.user_id == user_id,
+        Transaction.transaction_date >= start_date,
+        Transaction.transaction_date <= end_date,
+    ]
+
+    # Total expense
+    expense_conds = base_conditions + [Transaction.type == TransactionType.expense]
+    if category:
+        expense_conds.append(Transaction.category.ilike(category))
+
+    total_q = await db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0)).where(and_(*expense_conds))
+    )
+    total_expense = Decimal(str(total_q.scalar()))
+
+    # Total income (never filtered by category)
+    income_q = await db.execute(
+        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
+            *base_conditions,
+            Transaction.type == TransactionType.income,
+        )
+    )
+    total_income = Decimal(str(income_q.scalar()))
+
+    # Category breakdown (only when not already filtered to one category)
+    breakdown: dict[str, str] = {}
+    if not category:
+        breakdown_q = await db.execute(
+            select(Transaction.category, func.sum(Transaction.amount))
+            .where(*base_conditions, Transaction.type == TransactionType.expense)
+            .group_by(Transaction.category)
+            .order_by(func.sum(Transaction.amount).desc())
+        )
+        breakdown = {row[0]: str(row[1]) for row in breakdown_q.all()}
+
+    return {
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "category_filter": category,
+        "total_expense": str(total_expense),
+        "total_income": str(total_income),
+        "net": str(total_income - total_expense),
+        "by_category": breakdown,
+    }
