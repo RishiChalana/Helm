@@ -1,0 +1,38 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Alembic cache
+
+alembic/versions/**pycache**/
+
+# macOS
+
+.DS_Store
+
+# IDE
+
+.vscode/
+.idea/
+
+# Logs
+
+*.log
+
+# Node
+
+node_modules/
+npm-debug.log*
+
+# React Native / Expo
+
+.expo/
+dist/
+build/
+android/app/build/
+ios/build/
