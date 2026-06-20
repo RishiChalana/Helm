@@ -8,7 +8,7 @@ import { hasTokens, clearTokens } from "@/lib/auth";
 import { authApi } from "@/lib/api";
 import { authenticateWithBiometric } from "@/lib/biometric";
 import { registerForPushNotifications } from "@/lib/push";
-import "../global.css";
+import "./global.css";
 
 export default function RootLayout() {
   const { isAuthenticated, isUnlocked, setUser, setUnlocked, logout } = useAuthStore();

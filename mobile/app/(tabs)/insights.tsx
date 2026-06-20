@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { insightApi } from "@/lib/api";
 
 interface Insight {
@@ -37,9 +38,11 @@ export default function InsightsScreen() {
     } catch {}
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
 
   function renderItem({ item }: { item: Insight }) {
     return (

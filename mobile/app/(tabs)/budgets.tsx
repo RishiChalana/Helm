@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,16 +10,26 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
+import { Feather } from "@expo/vector-icons";
 import { budgetApi } from "@/lib/api";
 
-interface BudgetStatus {
-  budget_id: number;
+interface BudgetOut {
+  id: number;
+  user_id: number;
   category: string;
-  limit: string;
-  spent: string;
-  remaining: string;
+  limit_amount: number;
+  period: string;
+  period_start: string | null;
+  period_end: string | null;
+}
+
+interface BudgetStatus {
+  budget: BudgetOut;
+  spent: number;
+  remaining: number;
   pace_percent: number;
-  projected_spend: string;
+  projected_spend: number;
   is_over_budget: boolean;
 }
 
@@ -27,18 +37,15 @@ export default function BudgetsScreen() {
   const [statuses, setStatuses] = useState<BudgetStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<BudgetStatus | null>(null);
 
   async function load() {
     setLoading(true);
     try {
       const budgetsRes = await budgetApi.list();
       const budgets = budgetsRes.data;
-      const today = new Date();
-      const currentMonth = budgets.filter(
-        (b: any) => b.period_month === today.getMonth() + 1 && b.period_year === today.getFullYear()
-      );
       const statusResults = await Promise.all(
-        currentMonth.map((b: any) => budgetApi.status(b.id).then((r) => r.data))
+        budgets.map((b: any) => budgetApi.status(b.id).then((r) => r.data))
       );
       setStatuses(statusResults);
     } catch {
@@ -48,9 +55,33 @@ export default function BudgetsScreen() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
+
+  function confirmDelete(item: BudgetStatus) {
+    Alert.alert(
+      "Delete Budget",
+      `Delete ${item.budget.category} budget (₹${item.budget.limit_amount.toFixed(0)} limit)?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await budgetApi.delete(item.budget.id);
+              load();
+            } catch {
+              Alert.alert("Error", "Could not delete budget.");
+            }
+          },
+        },
+      ]
+    );
+  }
 
   function renderItem({ item }: { item: BudgetStatus }) {
     const fillWidth = Math.min(item.pace_percent, 100);
@@ -58,12 +89,21 @@ export default function BudgetsScreen() {
     const barColor = isOver ? "#FF4F6E" : item.pace_percent > 80 ? "#FFB347" : "#6C63FF";
 
     return (
-      <View className="bg-card rounded-xl px-4 py-4 mb-3 border border-border">
+      <TouchableOpacity
+        className="bg-card rounded-xl px-4 py-4 mb-3 border border-border"
+        onPress={() => setEditTarget(item)}
+        activeOpacity={0.7}
+      >
         <View className="flex-row justify-between mb-2">
-          <Text className="text-text-primary font-semibold text-base">{item.category}</Text>
-          <Text className={isOver ? "text-danger font-semibold" : "text-text-secondary"}>
-            {item.pace_percent.toFixed(0)}%
-          </Text>
+          <Text className="text-text-primary font-semibold text-base">{item.budget.category}</Text>
+          <View className="flex-row items-center" style={{ gap: 10 }}>
+            <Text className={isOver ? "text-danger font-semibold" : "text-text-secondary"}>
+              {item.pace_percent.toFixed(0)}%
+            </Text>
+            <TouchableOpacity onPress={() => confirmDelete(item)} hitSlop={8}>
+              <Feather name="trash-2" size={18} color="#FF4F6E" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View className="h-2 bg-surface rounded-full mb-3">
@@ -75,18 +115,18 @@ export default function BudgetsScreen() {
 
         <View className="flex-row justify-between">
           <Text className="text-text-secondary text-sm">
-            Spent <Text className="text-text-primary">₹{item.spent}</Text>
+            Spent <Text className="text-text-primary">₹{item.spent.toFixed(0)}</Text>
           </Text>
           <Text className="text-text-secondary text-sm">
-            Limit <Text className="text-text-primary">₹{item.limit}</Text>
+            Limit <Text className="text-text-primary">₹{item.budget.limit_amount.toFixed(0)}</Text>
           </Text>
         </View>
-        {parseFloat(item.projected_spend) > parseFloat(item.limit) && (
+        {item.projected_spend > item.budget.limit_amount && (
           <Text className="text-danger text-xs mt-2">
-            Projected ₹{parseFloat(item.projected_spend).toFixed(0)} — over by end of month
+            Projected ₹{item.projected_spend.toFixed(0)} — over by end of month
           </Text>
         )}
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -107,7 +147,7 @@ export default function BudgetsScreen() {
       ) : (
         <FlatList
           data={statuses}
-          keyExtractor={(s) => String(s.budget_id)}
+          keyExtractor={(s) => String(s.budget.id)}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16 }}
           ListEmptyComponent={
@@ -118,7 +158,7 @@ export default function BudgetsScreen() {
         />
       )}
 
-      <AddBudgetModal
+      <BudgetModal
         visible={showAdd}
         onClose={() => setShowAdd(false)}
         onSaved={() => {
@@ -126,22 +166,41 @@ export default function BudgetsScreen() {
           load();
         }}
       />
+      <BudgetModal
+        visible={editTarget !== null}
+        budgetStatus={editTarget ?? undefined}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => {
+          setEditTarget(null);
+          load();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-function AddBudgetModal({
+function BudgetModal({
   visible,
+  budgetStatus,
   onClose,
   onSaved,
 }: {
   visible: boolean;
+  budgetStatus?: BudgetStatus;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [category, setCategory] = useState("");
-  const [limit, setLimit] = useState("");
+  const isEdit = !!budgetStatus;
+  const [category, setCategory] = useState(budgetStatus?.budget.category ?? "");
+  const [limit, setLimit] = useState(
+    budgetStatus ? String(budgetStatus.budget.limit_amount) : ""
+  );
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setCategory(budgetStatus?.budget.category ?? "");
+    setLimit(budgetStatus ? String(budgetStatus.budget.limit_amount) : "");
+  }, [budgetStatus]);
 
   async function save() {
     if (!category.trim() || !limit) {
@@ -149,17 +208,30 @@ function AddBudgetModal({
       return;
     }
     const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const periodStart =
+      budgetStatus?.budget.period_start ?? `${today.getFullYear()}-${mm}-01`;
+
     setLoading(true);
     try {
-      await budgetApi.create({
-        category: category.trim(),
-        limit_amount: parseFloat(limit),
-        period_month: today.getMonth() + 1,
-        period_year: today.getFullYear(),
-      });
+      if (isEdit) {
+        await budgetApi.update(budgetStatus!.budget.id, {
+          category: category.trim(),
+          limit_amount: parseFloat(limit),
+          period: budgetStatus!.budget.period,
+          period_start: periodStart,
+        });
+      } else {
+        await budgetApi.create({
+          category: category.trim(),
+          limit_amount: parseFloat(limit),
+          period: "monthly",
+          period_start: periodStart,
+        });
+        setCategory("");
+        setLimit("");
+      }
       onSaved();
-      setCategory("");
-      setLimit("");
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.detail ?? "Could not save budget.");
     } finally {
@@ -171,7 +243,9 @@ function AddBudgetModal({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View className="flex-1 bg-background px-6 pt-6">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-text-primary text-xl font-bold">New Budget</Text>
+          <Text className="text-text-primary text-xl font-bold">
+            {isEdit ? "Edit Budget" : "New Budget"}
+          </Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-accent text-base">Cancel</Text>
           </TouchableOpacity>
@@ -201,7 +275,9 @@ function AddBudgetModal({
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text className="text-white font-semibold text-base">Create Budget</Text>
+            <Text className="text-white font-semibold text-base">
+              {isEdit ? "Save Changes" : "Create Budget"}
+            </Text>
           )}
         </TouchableOpacity>
       </View>

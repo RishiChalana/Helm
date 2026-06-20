@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
+import { Feather } from "@expo/vector-icons";
 import { transactionApi } from "@/lib/api";
 
 interface Transaction {
@@ -26,6 +28,7 @@ export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [editTarget, setEditTarget] = useState<Transaction | null>(null);
 
   async function load() {
     setLoading(true);
@@ -39,14 +42,42 @@ export default function TransactionsScreen() {
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
+
+  function confirmDelete(item: Transaction) {
+    Alert.alert(
+      "Delete Transaction",
+      `Delete ₹${item.amount} – ${item.category}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await transactionApi.delete(item.id);
+              load();
+            } catch {
+              Alert.alert("Error", "Could not delete transaction.");
+            }
+          },
+        },
+      ]
+    );
+  }
 
   function renderItem({ item }: { item: Transaction }) {
     const isExpense = item.type === "expense";
     return (
-      <View className="bg-card rounded-xl px-4 py-4 mb-3 border border-border">
+      <TouchableOpacity
+        className="bg-card rounded-xl px-4 py-4 mb-3 border border-border"
+        onPress={() => setEditTarget(item)}
+        activeOpacity={0.7}
+      >
         <View className="flex-row justify-between items-start">
           <View className="flex-1">
             <Text className="text-text-primary font-medium text-base">{item.category}</Text>
@@ -55,14 +86,19 @@ export default function TransactionsScreen() {
             )}
             <Text className="text-text-secondary text-xs mt-1">{item.transaction_date}</Text>
           </View>
-          <Text
-            className={`text-base font-semibold ${isExpense ? "text-danger" : "text-accent-2"}`}
-          >
-            {isExpense ? "-" : "+"}₹{item.amount}
-          </Text>
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            <Text
+              className={`text-base font-semibold ${isExpense ? "text-danger" : "text-accent-2"}`}
+            >
+              {isExpense ? "-" : "+"}₹{item.amount}
+            </Text>
+            <TouchableOpacity onPress={() => confirmDelete(item)} hitSlop={8}>
+              <Feather name="trash-2" size={18} color="#FF4F6E" />
+            </TouchableOpacity>
+          </View>
         </View>
         {item.note && <Text className="text-text-secondary text-sm mt-2">{item.note}</Text>}
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -92,7 +128,7 @@ export default function TransactionsScreen() {
         />
       )}
 
-      <AddTransactionModal
+      <TransactionModal
         visible={showAdd}
         onClose={() => setShowAdd(false)}
         onSaved={() => {
@@ -100,25 +136,45 @@ export default function TransactionsScreen() {
           load();
         }}
       />
+      <TransactionModal
+        visible={editTarget !== null}
+        transaction={editTarget ?? undefined}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => {
+          setEditTarget(null);
+          load();
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-function AddTransactionModal({
+function TransactionModal({
   visible,
+  transaction,
   onClose,
   onSaved,
 }: {
   visible: boolean;
+  transaction?: Transaction;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState("");
-  const [merchant, setMerchant] = useState("");
-  const [note, setNote] = useState("");
-  const [type, setType] = useState<"expense" | "income">("expense");
+  const isEdit = !!transaction;
+  const [amount, setAmount] = useState(transaction ? String(transaction.amount) : "");
+  const [category, setCategory] = useState(transaction?.category ?? "");
+  const [merchant, setMerchant] = useState(transaction?.merchant ?? "");
+  const [note, setNote] = useState(transaction?.note ?? "");
+  const [type, setType] = useState<"expense" | "income">(transaction?.type ?? "expense");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setAmount(transaction ? String(transaction.amount) : "");
+    setCategory(transaction?.category ?? "");
+    setMerchant(transaction?.merchant ?? "");
+    setNote(transaction?.note ?? "");
+    setType(transaction?.type ?? "expense");
+  }, [transaction]);
 
   async function save() {
     if (!amount || !category.trim()) {
@@ -127,19 +183,26 @@ function AddTransactionModal({
     }
     setLoading(true);
     try {
-      await transactionApi.create({
+      const payload = {
         amount: parseFloat(amount),
         type,
         category: category.trim(),
         merchant: merchant.trim() || null,
         note: note.trim() || null,
-        transaction_date: new Date().toISOString().split("T")[0],
-      });
+        transaction_date:
+          transaction?.transaction_date ?? new Date().toISOString().split("T")[0],
+      };
+      if (isEdit) {
+        await transactionApi.update(transaction!.id, payload);
+      } else {
+        await transactionApi.create(payload);
+        setAmount("");
+        setCategory("");
+        setMerchant("");
+        setNote("");
+        setType("expense");
+      }
       onSaved();
-      setAmount("");
-      setCategory("");
-      setMerchant("");
-      setNote("");
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.detail ?? "Could not save transaction.");
     } finally {
@@ -151,13 +214,15 @@ function AddTransactionModal({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View className="flex-1 bg-background px-6 pt-6">
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-text-primary text-xl font-bold">New Transaction</Text>
+          <Text className="text-text-primary text-xl font-bold">
+            {isEdit ? "Edit Transaction" : "New Transaction"}
+          </Text>
           <TouchableOpacity onPress={onClose}>
             <Text className="text-accent text-base">Cancel</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="flex-row mb-4 gap-3">
+        <View className="flex-row mb-4" style={{ gap: 12 }}>
           {(["expense", "income"] as const).map((t) => (
             <TouchableOpacity
               key={t}
@@ -174,7 +239,12 @@ function AddTransactionModal({
         </View>
 
         {[
-          { placeholder: "Amount (₹)", value: amount, onChange: setAmount, keyboard: "numeric" as const },
+          {
+            placeholder: "Amount (₹)",
+            value: amount,
+            onChange: setAmount,
+            keyboard: "numeric" as const,
+          },
           { placeholder: "Category", value: category, onChange: setCategory },
           { placeholder: "Merchant (optional)", value: merchant, onChange: setMerchant },
           { placeholder: "Note (optional)", value: note, onChange: setNote },
@@ -198,7 +268,9 @@ function AddTransactionModal({
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text className="text-white font-semibold text-base">Save</Text>
+            <Text className="text-white font-semibold text-base">
+              {isEdit ? "Save Changes" : "Save"}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
