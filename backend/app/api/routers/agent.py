@@ -6,7 +6,7 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.audit_log import AuditLog
-from app.schemas.agent import AgentChatRequest, AgentChatResponse, ConversationOut
+from app.schemas.agent import AgentChatRequest, AgentChatResponse, ConversationOut, ReallocationProposalOut
 from app.agents.graph import run_agent
 from app.agents.tools import set_tool_context
 
@@ -44,8 +44,10 @@ async def chat(
     )
     history = [{"role": m.role.value, "content": m.content} for m in result.scalars().all()]
 
-    # Inject DB context into tools
+    # Inject DB context into tools; clear any stale pending proposal
     set_tool_context(current_user.id, db)
+    from app.agents.tools import _tool_context as _tc
+    _tc.pop("pending_proposal", None)
 
     try:
         reply = await run_agent(history, body.message)
@@ -58,13 +60,20 @@ async def chat(
             )
         raise
 
+    # If propose_reallocation fired, surface its structured data to the client.
+    # The LLM cannot call execute_reallocation — only the user tapping Confirm can.
+    pending = _tc.pop("pending_proposal", None)
+    proposal_out: ReallocationProposalOut | None = None
+    if pending:
+        proposal_out = ReallocationProposalOut(**pending)
+
     # Persist both turns
     db.add(Message(conversation_id=conversation.id, role=MessageRole.user, content=body.message))
     db.add(Message(conversation_id=conversation.id, role=MessageRole.assistant, content=reply))
     db.add(AuditLog(user_id=current_user.id, action="agent_chat", actor="user"))
     await db.commit()
 
-    return AgentChatResponse(reply=reply, conversation_id=conversation.id)
+    return AgentChatResponse(reply=reply, conversation_id=conversation.id, proposal=proposal_out)
 
 
 @router.get("/conversations", response_model=list[ConversationOut])

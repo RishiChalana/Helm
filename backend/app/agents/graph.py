@@ -111,6 +111,7 @@ def _build_react_graph(llm, tools: list):
         last = state["messages"][-1]
         results: list[BaseMessage] = []
         for call in last.tool_calls:
+            log.info("[tool_call] %s  args=%s", call["name"], call["args"])
             tool = tools_by_name.get(call["name"])
             if tool is None:
                 content = f"Unknown tool: {call['name']}"
@@ -119,6 +120,7 @@ def _build_react_graph(llm, tools: list):
                     content = str(await tool.ainvoke(call["args"]))
                 except Exception as exc:
                     content = f"Tool error: {exc}"
+            log.info("[tool_result] %s  -> %s", call["name"], str(content)[:120])
             results.append(ToolMessage(content=content, tool_call_id=call["id"]))
         return {"messages": results}
 
@@ -193,7 +195,11 @@ async def _invoke(graph, messages: list[BaseMessage], max_retries: int = 2) -> s
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            result = await graph.ainvoke({"messages": messages})
+            # recursion_limit caps runaway loops: 16 node activations ≈ 7 tool-call rounds.
+            result = await graph.ainvoke(
+                {"messages": messages},
+                config={"recursion_limit": 16},
+            )
             last = result["messages"][-1]
             return last.content if isinstance(last.content, str) else str(last.content)
         except Exception as exc:

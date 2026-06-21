@@ -95,6 +95,11 @@ export const agentApi = {
   conversations: () => api.get("/agent/conversations"),
 };
 
+export const reallocationApi = {
+  execute: (proposal_id: string) => api.post("/reallocations/execute", { proposal_id }),
+  undo: (audit_log_id: number) => api.post("/reallocations/undo", { audit_log_id }),
+};
+
 export const insightApi = {
   list: () => api.get("/insights"),
   markRead: (id: number) => api.patch(`/insights/${id}/read`),

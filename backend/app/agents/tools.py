@@ -153,8 +153,14 @@ async def forecast_cashflow(horizon_days: int = 30) -> dict:
 
     txs = await list_transactions(user_id, TransactionFilter(start_date=start, end_date=end), db)
 
-    total_income = sum(Decimal(str(t.amount)) for t in txs if t.type == TransactionType.income)
-    total_expense = sum(Decimal(str(t.amount)) for t in txs if t.type == TransactionType.expense)
+    total_income = sum(
+        (Decimal(str(t.amount)) for t in txs if t.type == TransactionType.income),
+        Decimal(0),
+    )
+    total_expense = sum(
+        (Decimal(str(t.amount)) for t in txs if t.type == TransactionType.expense),
+        Decimal(0),
+    )
 
     daily_income = total_income / 30
     daily_expense = total_expense / 30
@@ -196,7 +202,126 @@ async def get_spending_summary(
     )
 
 
+@tool
+async def propose_reallocation(
+    from_category: str,
+    to_category: str,
+    amount: float | None = None,
+    percentage: float | None = None,
+) -> str:
+    """
+    Propose redirecting budget from one underspending category to another.
+    Provide either amount (absolute ₹ value) or percentage (e.g. 20 = 20% of the source budget).
+    to_category can be an existing budget category name or "savings".
+    This only proposes — the user must confirm via the app before any change is applied.
+    """
+    import json
+    import uuid as _uuid
+    from app.models.audit_log import AuditLog
+    from app.services.budget_service import get_budget_by_category, get_budget_status as _get_status
+
+    user_id, db = _ctx()
+
+    try:
+        from_budget = await get_budget_by_category(user_id, from_category, db)
+    except Exception as exc:
+        return f"Could not find an active budget for '{from_category}': {exc}"
+
+    from_old_limit = float(from_budget.limit_amount)
+
+    if percentage is not None and amount is None:
+        amount = round(from_old_limit * percentage / 100, 2)
+
+    if amount is None or amount <= 0:
+        return "Provide either a positive amount or a percentage to redirect."
+
+    from_new_limit = round(from_old_limit - amount, 2)
+    if from_new_limit < 0:
+        return (
+            f"Cannot reduce {from_category} by ₹{amount:,.0f} — "
+            f"its limit is only ₹{from_old_limit:,.0f}."
+        )
+
+    to_budget = None
+    to_old_limit: float | None = None
+    to_new_limit: float | None = None
+    is_savings = to_category.lower() in ("savings", "saving")
+
+    if not is_savings:
+        try:
+            to_budget = await get_budget_by_category(user_id, to_category, db)
+            to_old_limit = float(to_budget.limit_amount)
+            to_new_limit = round(to_old_limit + amount, 2)
+        except Exception as exc:
+            return f"Could not find an active budget for '{to_category}': {exc}"
+
+    # Capture remaining spend so the reply is informative
+    try:
+        from_status = await _get_status(user_id, from_budget.id, db)
+        remaining_note = f" (₹{float(from_status.remaining):,.0f} unspent this period)"
+    except Exception:
+        remaining_note = ""
+
+    proposal_id = str(_uuid.uuid4())
+    payload = {
+        "from_category": from_category,
+        "to_category": to_category,
+        "amount": amount,
+        "from_budget_id": from_budget.id,
+        "to_budget_id": to_budget.id if to_budget else None,
+        "from_old_limit": from_old_limit,
+        "to_old_limit": to_old_limit,
+        "from_new_limit": from_new_limit,
+        "to_new_limit": to_new_limit,
+    }
+
+    entry = AuditLog(
+        user_id=user_id,
+        action="reallocation",
+        actor="agent",
+        payload=payload,
+        proposal_id=proposal_id,
+        status="proposed",
+    )
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+
+    # Surface the proposal to the router via tool context so it can be
+    # included as a structured field in AgentChatResponse (never LLM-callable).
+    _tool_context["pending_proposal"] = {
+        "proposal_id": proposal_id,
+        "audit_log_id": entry.id,
+        "from_category": from_category,
+        "to_category": to_category,
+        "amount": amount,
+        "from_old_limit": from_old_limit,
+        "from_new_limit": from_new_limit,
+        "to_old_limit": to_old_limit,
+        "to_new_limit": to_new_limit,
+    }
+
+    if is_savings:
+        description = (
+            f"Redirect ₹{amount:,.0f}/month from {from_category} "
+            f"(₹{from_old_limit:,.0f} → ₹{from_new_limit:,.0f}) towards savings"
+        )
+    else:
+        description = (
+            f"Redirect ₹{amount:,.0f}/month from {from_category} "
+            f"(₹{from_old_limit:,.0f} → ₹{from_new_limit:,.0f}) "
+            f"to {to_category} (₹{to_old_limit:,.0f} → ₹{to_new_limit:,.0f})"
+        )
+    _tool_context["pending_proposal"]["description"] = description
+
+    return (
+        f"Proposal ready: {description}.{remaining_note} "
+        f"The user will see a Confirm button in the app. "
+        f"Tell them what will change and ask them to confirm."
+    )
+
+
 QUERY_TOOLS = [get_transactions, get_budget_status, get_spending_summary, forecast_cashflow]
-PLANNING_TOOLS = [simulate_scenario]
+PLANNING_TOOLS = [simulate_scenario, propose_reallocation]
 # Kept for any external references; equals the union of both groups.
 AGENT_TOOLS = QUERY_TOOLS + PLANNING_TOOLS
