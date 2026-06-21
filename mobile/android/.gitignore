@@ -1,16 +1,33 @@
-# OSX
-#
-.DS_Store
-
-# Android/IntelliJ
-#
+# ─── Gradle build outputs ─────────────────────────────────────────────────────
 build/
-.idea
-.gradle
+.gradle/
+app/build/
+
+# ─── Local configuration ──────────────────────────────────────────────────────
 local.properties
+gradle.properties.local
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
 *.iml
-*.hprof
+*.ipr
+*.iws
+
+# ─── Android Studio / IntelliJ ────────────────────────────────────────────────
+captures/
+.externalNativeBuild/
 .cxx/
 
-# Bundle artifacts
+# ─── Signing ──────────────────────────────────────────────────────────────────
+*.jks
+*.keystore
+!debug.keystore
+
+# ─── Native debug ─────────────────────────────────────────────────────────────
+*.hprof
+
+# ─── Bundle artifacts ─────────────────────────────────────────────────────────
 *.jsbundle
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store

@@ -1,38 +1,52 @@
-# Python
-
-**pycache**/
+# ─── Python bytecode ─────────────────────────────────────────────────────────
+__pycache__/
 *.py[cod]
-*.egg-info/
+*$py.class
+*.pyo
+
+# ─── Virtual environments ─────────────────────────────────────────────────────
 .venv/
 venv/
+env/
+ENV/
+
+# ─── Distribution / packaging ─────────────────────────────────────────────────
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ─── Secrets & config ─────────────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
 
-# Alembic cache
+# ─── Database ─────────────────────────────────────────────────────────────────
+*.db
+*.sqlite3
 
-alembic/versions/**pycache**/
+# ─── Alembic ──────────────────────────────────────────────────────────────────
+alembic/versions/__pycache__/
 
-# macOS
+# ─── Test / coverage ──────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── macOS ────────────────────────────────────────────────────────────────────
 .DS_Store
 
-# IDE
-
+# ─── IDE ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 
-# Logs
-
-*.log
-
-# Node
-
-node_modules/
-npm-debug.log*
-
-# React Native / Expo
-
-.expo/
-dist/
-build/
-android/app/build/
-ios/build/
+# ─── Type stubs / mypy ────────────────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
