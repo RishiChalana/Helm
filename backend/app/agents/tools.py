@@ -321,7 +321,172 @@ async def propose_reallocation(
     )
 
 
-QUERY_TOOLS = [get_transactions, get_budget_status, get_spending_summary, forecast_cashflow]
-PLANNING_TOOLS = [simulate_scenario, propose_reallocation]
+@tool
+async def get_subscriptions() -> list[dict]:
+    """
+    Detect recurring charges and subscriptions by analysing the user's
+    transaction history for the past ~3 months. Returns a list of
+    detected patterns with category, merchant, average monthly amount,
+    and number of occurrences. Use this when the user asks what
+    subscriptions they have or wants to review recurring charges.
+    """
+    from app.services.subscription_service import detect_recurring_transactions
+
+    user_id, db = _ctx()
+    patterns = await detect_recurring_transactions(user_id, db)
+    return [
+        {
+            "category": p.category,
+            "merchant": p.merchant or None,
+            "avg_monthly_amount": str(p.avg_amount),
+            "occurrences": p.occurrence_count,
+            "first_seen": p.first_seen.isoformat(),
+            "last_seen": p.last_seen.isoformat(),
+        }
+        for p in patterns
+    ]
+
+
+@tool
+async def propose_savings_goal(
+    description: str,
+    target_amount: float | None = None,
+    target_date: str | None = None,
+) -> str:
+    """
+    Analyse the user's actual income and expense history to determine
+    realistic monthly savings capacity, then propose a concrete savings goal.
+
+    If the user's expenses equal or exceed income (no positive surplus),
+    do NOT propose a goal — instead explain honestly and suggest reducing
+    expenses first.
+
+    Parameters
+    ----------
+    description  : What the goal is for (e.g. "emergency fund", "vacation").
+    target_amount: How much they want to save in total (optional).
+    target_date  : ISO date by which they want to reach the goal (optional).
+
+    Returns a natural-language proposal with stated reasoning.
+    Does NOT write anything to the database.
+    """
+    from datetime import date as _date, timedelta
+    from sqlalchemy import select as _select
+    from app.models.transaction import Transaction as _Tx, TransactionType
+
+    user_id, db = _ctx()
+    today = _date.today()
+    cutoff = today - timedelta(days=90)
+
+    result = await db.execute(
+        _select(_Tx).where(
+            _Tx.user_id == user_id,
+            _Tx.transaction_date >= cutoff,
+        )
+    )
+    txs = list(result.scalars().all())
+
+    total_income = sum(float(t.amount) for t in txs if t.type == TransactionType.income)
+    total_expense = sum(float(t.amount) for t in txs if t.type == TransactionType.expense)
+
+    # Extrapolate to monthly averages over the 90-day window
+    monthly_income = round(total_income / 3, 2)
+    monthly_expense = round(total_expense / 3, 2)
+    monthly_surplus = round(monthly_income - monthly_expense, 2)
+
+    # ── No-surplus path ────────────────────────────────────────────────────────
+    if monthly_surplus <= 0:
+        msg = (
+            f"Based on your last 90 days, your average monthly income is "
+            f"₹{monthly_income:,.0f} and your average monthly expenses are "
+            f"₹{monthly_expense:,.0f}, leaving a surplus of "
+            f"₹{monthly_surplus:,.0f}. "
+        )
+        if monthly_surplus == 0:
+            msg += (
+                "Your income exactly covers your expenses — there is no room to save right now. "
+                "To set a savings goal you would first need to reduce expenses or increase income."
+            )
+        else:
+            msg += (
+                "Your expenses currently exceed your income, so setting a savings goal is not "
+                "realistic right now. I'd recommend reviewing your expense categories to find "
+                "areas to cut before committing to a savings target."
+            )
+        return msg
+
+    # ── Positive-surplus path ──────────────────────────────────────────────────
+    # Conservative suggestion: save 80 % of consistent surplus
+    suggested_monthly = round(monthly_surplus * 0.80, 2)
+
+    # Resolve months-to-goal
+    if target_amount is not None and target_amount > 0:
+        monthly_to_use = suggested_monthly
+        if target_date is not None:
+            try:
+                td = _date.fromisoformat(target_date)
+                months_avail = max(1, (td - today).days / 30)
+                required_monthly = round(target_amount / months_avail, 2)
+                if required_monthly > monthly_surplus:
+                    warning = (
+                        f" Note: reaching ₹{target_amount:,.0f} by {target_date} would require "
+                        f"saving ₹{required_monthly:,.0f}/month, which exceeds your current surplus "
+                        f"of ₹{monthly_surplus:,.0f}/month. Consider a later target date or a lower goal."
+                    )
+                    monthly_to_use = suggested_monthly
+                else:
+                    monthly_to_use = required_monthly
+                    warning = ""
+            except ValueError:
+                warning = ""
+        else:
+            warning = ""
+        months_to_goal = round(target_amount / monthly_to_use, 1) if monthly_to_use > 0 else None
+    else:
+        # No target amount — just report capacity
+        monthly_to_use = suggested_monthly
+        months_to_goal = None
+        warning = ""
+
+    # Build reasoning string
+    if target_amount and months_to_goal:
+        reasoning = (
+            f"Based on your last 90 days, you earn ₹{monthly_income:,.0f}/month on average and "
+            f"spend ₹{monthly_expense:,.0f}/month, giving a consistent surplus of "
+            f"₹{monthly_surplus:,.0f}/month. Saving ₹{monthly_to_use:,.0f}/month "
+            f"(~80% of surplus, leaving a buffer) would let you reach ₹{target_amount:,.0f} "
+            f"in {months_to_goal} month{'s' if months_to_goal != 1 else ''}."
+        )
+        if warning:
+            reasoning += warning
+    else:
+        reasoning = (
+            f"Based on your last 90 days, you earn ₹{monthly_income:,.0f}/month on average and "
+            f"spend ₹{monthly_expense:,.0f}/month, giving a consistent surplus of "
+            f"₹{monthly_surplus:,.0f}/month. You could comfortably save around "
+            f"₹{monthly_to_use:,.0f}/month."
+        )
+
+    # Store proposal in tool context for the router to surface to the client
+    _tool_context["pending_goal_proposal"] = {
+        "description": description,
+        "target_amount": target_amount or 0.0,
+        "monthly_amount": float(monthly_to_use),
+        "target_date": target_date,
+        "reasoning": reasoning,
+        "months_to_goal": months_to_goal,
+        "monthly_income": monthly_income,
+        "monthly_expense": monthly_expense,
+        "monthly_surplus": monthly_surplus,
+    }
+
+    return (
+        f"{reasoning} Tell the user this proposal is ready and ask them to "
+        f"tap Confirm in the app to create the goal."
+    )
+
+
+QUERY_TOOLS = [get_transactions, get_budget_status, get_spending_summary, forecast_cashflow, get_subscriptions]
+PLANNING_TOOLS = [simulate_scenario, propose_reallocation, propose_savings_goal]
 # Kept for any external references; equals the union of both groups.
 AGENT_TOOLS = QUERY_TOOLS + PLANNING_TOOLS

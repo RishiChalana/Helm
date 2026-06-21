@@ -28,3 +28,5 @@ class User(Base):
     budgets: Mapped[list["Budget"]] = relationship(back_populates="user", lazy="select")
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="user", lazy="select")
     insights: Mapped[list["Insight"]] = relationship(back_populates="user", lazy="select")
+    recurring_patterns: Mapped[list["RecurringPattern"]] = relationship(back_populates="user", lazy="select")
+    goals: Mapped[list["Goal"]] = relationship(back_populates="user", lazy="select")

@@ -24,10 +24,23 @@ class ReallocationProposalOut(BaseModel):
     description: str
 
 
+class GoalProposalOut(BaseModel):
+    description: str
+    target_amount: float
+    monthly_amount: float
+    target_date: str | None
+    reasoning: str
+    months_to_goal: float | None
+    monthly_income: float
+    monthly_expense: float
+    monthly_surplus: float
+
+
 class AgentChatResponse(BaseModel):
     reply: str
     conversation_id: int
     proposal: ReallocationProposalOut | None = None
+    goal_proposal: GoalProposalOut | None = None
 
 
 class ConversationOut(BaseModel):

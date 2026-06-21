@@ -19,6 +19,23 @@ MATERIALITY_PACE_THRESHOLD = 15.0   # % above expected pace
 MATERIALITY_OVERSPEND_THRESHOLD = 20.0  # % over budget limit
 
 
+async def _generate_subscription_insights_for_user(user_id: int) -> None:
+    from app.services.subscription_service import run_subscription_check
+    from app.services.insight_service import push_insight_to_device
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            return
+        new_insights = await run_subscription_check(user_id, db)
+        for insight in new_insights:
+            await push_insight_to_device(insight, user)
+            insight.is_pushed = True
+        if new_insights:
+            await db.commit()
+
+
 async def _generate_insights_for_user(user_id: int) -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(User).where(User.id == user_id))
@@ -88,3 +105,7 @@ async def run_daily_insights() -> None:
             await _generate_insights_for_user(user_id)
         except Exception:
             logger.exception("Insight job failed for user %s", user_id)
+        try:
+            await _generate_subscription_insights_for_user(user_id)
+        except Exception:
+            logger.exception("Subscription check failed for user %s", user_id)

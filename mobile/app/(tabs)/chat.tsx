@@ -11,7 +11,9 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { agentApi, reallocationApi } from "@/lib/api";
+import { agentApi, reallocationApi, goalApi } from "@/lib/api";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ReallocationProposal {
   proposal_id: string;
@@ -26,17 +28,37 @@ interface ReallocationProposal {
   description: string;
 }
 
-type ProposalState =
+interface GoalProposal {
+  description: string;
+  target_amount: number;
+  monthly_amount: number;
+  target_date: string | null;
+  reasoning: string;
+  months_to_goal: number | null;
+  monthly_income: number;
+  monthly_expense: number;
+  monthly_surplus: number;
+}
+
+type ReallocationState =
   | { status: "pending"; data: ReallocationProposal }
   | { status: "confirmed"; audit_log_id: number; undoDeadline: number }
   | { status: "dismissed" }
   | { status: "undone" };
 
+type GoalState =
+  | { status: "pending"; data: GoalProposal }
+  | { status: "confirmed"; goal_id: number }
+  | { status: "dismissed" };
+
 interface Message {
   role: "user" | "assistant";
   content: string;
   proposal?: ReallocationProposal;
+  goal_proposal?: GoalProposal;
 }
+
+// ── Reallocation ProposalCard ─────────────────────────────────────────────────
 
 function ProposalCard({
   state,
@@ -44,7 +66,7 @@ function ProposalCard({
   onDismiss,
   onUndo,
 }: {
-  state: ProposalState;
+  state: ReallocationState;
   onConfirm: () => void;
   onDismiss: () => void;
   onUndo: () => void;
@@ -53,10 +75,7 @@ function ProposalCard({
 
   useEffect(() => {
     if (state.status !== "confirmed") return;
-    const remaining = Math.max(
-      0,
-      Math.ceil((state.undoDeadline - Date.now()) / 1000)
-    );
+    const remaining = Math.max(0, Math.ceil((state.undoDeadline - Date.now()) / 1000));
     setSecondsLeft(remaining);
     if (remaining === 0) return;
     const interval = setInterval(() => {
@@ -115,13 +134,91 @@ function ProposalCard({
     );
   }
 
-  // dismissed or confirmed + countdown expired
   return null;
 }
 
+// ── Goal ProposalCard ─────────────────────────────────────────────────────────
+
+function GoalProposalCard({
+  state,
+  onConfirm,
+  onDismiss,
+}: {
+  state: GoalState;
+  onConfirm: () => void;
+  onDismiss: () => void;
+}) {
+  if (state.status === "pending") {
+    const p = state.data;
+    return (
+      <View className="mt-2 rounded-xl border border-accent-2 bg-surface px-4 py-4">
+        <Text className="text-accent-2 text-xs font-semibold mb-1 uppercase tracking-wide">
+          Savings Goal Proposal
+        </Text>
+        <Text className="text-text-primary font-semibold text-base mb-1">{p.description}</Text>
+
+        <View className="flex-row gap-4 mb-3 mt-1">
+          <View className="flex-1">
+            <Text className="text-text-secondary text-xs mb-0.5">Monthly savings</Text>
+            <Text className="text-text-primary font-semibold text-sm">
+              ₹{p.monthly_amount.toLocaleString("en-IN")}
+            </Text>
+          </View>
+          {p.target_amount > 0 && (
+            <View className="flex-1">
+              <Text className="text-text-secondary text-xs mb-0.5">Target</Text>
+              <Text className="text-text-primary font-semibold text-sm">
+                ₹{p.target_amount.toLocaleString("en-IN")}
+              </Text>
+            </View>
+          )}
+          {p.months_to_goal !== null && (
+            <View className="flex-1">
+              <Text className="text-text-secondary text-xs mb-0.5">Timeline</Text>
+              <Text className="text-text-primary font-semibold text-sm">
+                {p.months_to_goal} mo
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text className="text-text-secondary text-xs leading-4 mb-3">{p.reasoning}</Text>
+
+        <View className="flex-row gap-3">
+          <TouchableOpacity
+            className="flex-1 bg-accent-2 rounded-lg py-3 items-center"
+            onPress={onConfirm}
+          >
+            <Text className="text-white font-semibold text-sm">Set Goal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="flex-1 bg-card border border-border rounded-lg py-3 items-center"
+            onPress={onDismiss}
+          >
+            <Text className="text-text-secondary font-semibold text-sm">Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (state.status === "confirmed") {
+    return (
+      <View className="mt-2 rounded-xl border border-accent-2 bg-surface px-4 py-3">
+        <Text className="text-accent-2 text-sm font-medium">Goal created ✓</Text>
+      </View>
+    );
+  }
+
+  return null;
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+
 export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [proposalStates, setProposalStates] = useState<Record<number, ProposalState>>({});
+  const [reallocationStates, setReallocationStates] = useState<Record<number, ReallocationState>>({});
+  const [goalStates, setGoalStates] = useState<Record<number, GoalState>>({});
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<number | undefined>();
   const [loading, setLoading] = useState(false);
@@ -131,7 +228,7 @@ export default function ChatScreen() {
     if (messages.length > 0) {
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [messages, proposalStates]);
+  }, [messages, reallocationStates, goalStates]);
 
   async function send() {
     const text = input.trim();
@@ -146,13 +243,20 @@ export default function ChatScreen() {
         role: "assistant",
         content: res.data.reply,
         proposal: res.data.proposal ?? undefined,
+        goal_proposal: res.data.goal_proposal ?? undefined,
       };
       setMessages((prev) => {
-        const idx = prev.length; // index this message will have
+        const idx = prev.length;
         if (newMsg.proposal) {
-          setProposalStates((ps) => ({
+          setReallocationStates((ps) => ({
             ...ps,
             [idx]: { status: "pending", data: newMsg.proposal! },
+          }));
+        }
+        if (newMsg.goal_proposal) {
+          setGoalStates((gs) => ({
+            ...gs,
+            [idx]: { status: "pending", data: newMsg.goal_proposal! },
           }));
         }
         return [...prev, newMsg];
@@ -167,10 +271,12 @@ export default function ChatScreen() {
     }
   }
 
-  async function handleConfirm(msgIdx: number, proposal: ReallocationProposal) {
+  // ── Reallocation handlers ─────────────────────────────────────────────────
+
+  async function handleReallocationConfirm(msgIdx: number, proposal: ReallocationProposal) {
     try {
       await reallocationApi.execute(proposal.proposal_id);
-      setProposalStates((ps) => ({
+      setReallocationStates((ps) => ({
         ...ps,
         [msgIdx]: {
           status: "confirmed",
@@ -183,22 +289,49 @@ export default function ChatScreen() {
     }
   }
 
-  async function handleUndo(msgIdx: number, audit_log_id: number) {
+  async function handleReallocationUndo(msgIdx: number, audit_log_id: number) {
     try {
       await reallocationApi.undo(audit_log_id);
-      setProposalStates((ps) => ({ ...ps, [msgIdx]: { status: "undone" } }));
+      setReallocationStates((ps) => ({ ...ps, [msgIdx]: { status: "undone" } }));
     } catch (err: any) {
       Alert.alert("Error", err.response?.data?.detail ?? "Could not undo reallocation.");
     }
   }
 
-  function handleDismiss(msgIdx: number) {
-    setProposalStates((ps) => ({ ...ps, [msgIdx]: { status: "dismissed" } }));
+  function handleReallocationDismiss(msgIdx: number) {
+    setReallocationStates((ps) => ({ ...ps, [msgIdx]: { status: "dismissed" } }));
   }
+
+  // ── Goal handlers ─────────────────────────────────────────────────────────
+
+  async function handleGoalConfirm(msgIdx: number, proposal: GoalProposal) {
+    try {
+      const res = await goalApi.confirm({
+        description: proposal.description,
+        target_amount: proposal.target_amount,
+        monthly_amount: proposal.monthly_amount,
+        target_date: proposal.target_date ?? undefined,
+        reasoning: proposal.reasoning,
+      });
+      setGoalStates((gs) => ({
+        ...gs,
+        [msgIdx]: { status: "confirmed", goal_id: res.data.id },
+      }));
+    } catch (err: any) {
+      Alert.alert("Error", err.response?.data?.detail ?? "Could not create goal.");
+    }
+  }
+
+  function handleGoalDismiss(msgIdx: number) {
+    setGoalStates((gs) => ({ ...gs, [msgIdx]: { status: "dismissed" } }));
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   function renderMessage({ item, index }: { item: Message; index: number }) {
     const isUser = item.role === "user";
-    const pState = proposalStates[index];
+    const rState = reallocationStates[index];
+    const gState = goalStates[index];
 
     return (
       <View className={`mb-3 ${isUser ? "items-end" : "items-start"}`}>
@@ -211,18 +344,31 @@ export default function ChatScreen() {
             {item.content}
           </Text>
         </View>
-        {item.proposal && pState && (
+
+        {item.proposal && rState && (
           <View className="max-w-[80%] w-[80%]">
             <ProposalCard
-              state={pState}
-              onConfirm={() => handleConfirm(index, item.proposal!)}
-              onDismiss={() => handleDismiss(index)}
+              state={rState}
+              onConfirm={() => handleReallocationConfirm(index, item.proposal!)}
+              onDismiss={() => handleReallocationDismiss(index)}
               onUndo={() =>
-                handleUndo(
+                handleReallocationUndo(
                   index,
-                  pState.status === "confirmed" ? pState.audit_log_id : item.proposal!.audit_log_id
+                  rState.status === "confirmed"
+                    ? rState.audit_log_id
+                    : item.proposal!.audit_log_id
                 )
               }
+            />
+          </View>
+        )}
+
+        {item.goal_proposal && gState && (
+          <View className="max-w-[80%] w-[80%]">
+            <GoalProposalCard
+              state={gState}
+              onConfirm={() => handleGoalConfirm(index, item.goal_proposal!)}
+              onDismiss={() => handleGoalDismiss(index)}
             />
           </View>
         )}
@@ -246,8 +392,8 @@ export default function ChatScreen() {
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center mt-20">
             <Text className="text-text-secondary text-center px-8">
-              Ask me anything — "How much did I spend on food this month?" or "Can I free up budget
-              for dining by cutting entertainment?"
+              Ask me anything — "Help me set a savings goal for ₹1,00,000" or "Can I free up
+              budget for dining by cutting entertainment?"
             </Text>
           </View>
         }

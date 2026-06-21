@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.redis import close_redis
 from app.api.routers import auth, transactions, budgets, agent, insights
 from app.api.routers import reallocations
+from app.api.routers import goals
 
 settings = get_settings()
 scheduler = AsyncIOScheduler()
@@ -51,6 +52,7 @@ app.include_router(budgets.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(insights.router, prefix="/api/v1")
 app.include_router(reallocations.router, prefix="/api/v1")
+app.include_router(goals.router, prefix="/api/v1")
 
 
 @app.get("/health")

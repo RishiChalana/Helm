@@ -100,6 +100,17 @@ export const reallocationApi = {
   undo: (audit_log_id: number) => api.post("/reallocations/undo", { audit_log_id }),
 };
 
+export const goalApi = {
+  confirm: (data: {
+    description: string;
+    target_amount: number;
+    monthly_amount: number;
+    target_date?: string | null;
+    reasoning?: string | null;
+  }) => api.post("/goals/confirm", data),
+  list: () => api.get("/goals"),
+};
+
 export const insightApi = {
   list: () => api.get("/insights"),
   markRead: (id: number) => api.patch(`/insights/${id}/read`),
