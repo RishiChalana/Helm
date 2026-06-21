@@ -14,7 +14,8 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { transactionApi, statementApi } from "@/lib/api";
+import * as ImagePicker from "expo-image-picker";
+import { transactionApi, statementApi, receiptApi } from "@/lib/api";
 import { setCandidates } from "@/lib/statementStore";
 
 interface Transaction {
@@ -32,6 +33,7 @@ export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Transaction | null>(null);
 
@@ -85,6 +87,45 @@ export default function TransactionsScreen() {
       Alert.alert("Import failed", detail);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function scanReceipt() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Allow photo access to scan receipts.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const formData = new FormData();
+    formData.append("file", {
+      uri: asset.uri,
+      name: "receipt.jpg",
+      type: asset.mimeType ?? "image/jpeg",
+    } as any);
+
+    setScanning(true);
+    try {
+      const res = await receiptApi.upload(formData);
+      const candidates = res.data.candidates as any[];
+      if (candidates.length === 0) {
+        Alert.alert("Nothing found", "No transactions could be extracted from this image.");
+        return;
+      }
+      setCandidates(candidates);
+      router.push("/statement-review");
+    } catch (err: any) {
+      Alert.alert("Scan failed", err.response?.data?.detail ?? err.message ?? "Upload failed.");
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -160,6 +201,21 @@ export default function TransactionsScreen() {
             )}
             <Text className="text-text-secondary font-medium text-sm">
               {uploading ? "Parsing…" : "Import PDF"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="bg-card border border-border rounded-lg px-3 py-2 flex-row items-center"
+            style={{ gap: 4 }}
+            onPress={scanReceipt}
+            disabled={scanning}
+          >
+            {scanning ? (
+              <ActivityIndicator size="small" color="#8888A0" />
+            ) : (
+              <Feather name="camera" size={14} color="#8888A0" />
+            )}
+            <Text className="text-text-secondary font-medium text-sm">
+              {scanning ? "Scanning…" : "Scan Receipt"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity

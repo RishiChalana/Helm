@@ -54,7 +54,7 @@ async def _parse_with_llm(text: str) -> list[dict]:
     from app.core.config import get_settings
 
     settings = get_settings()
-    llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=settings.groq_api_key)
+    llm = ChatGroq(model="openai/gpt-oss-120b", api_key=settings.groq_api_key)
 
     response = await llm.ainvoke([{"role": "user", "content": _EXTRACTION_PROMPT + text[:8000]}])
     content = response.content.strip()

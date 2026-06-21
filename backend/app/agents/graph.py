@@ -53,7 +53,7 @@ Reply with a single word: query, planning, or both. No punctuation, no explanati
 # Plain LLM — no tool-calling, no structured output.
 # Keeping it separate from the tool-bound agents avoids any schema cross-contamination.
 _supervisor_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=settings.groq_api_key,
     temperature=0,
     max_tokens=10,
@@ -139,15 +139,13 @@ def _build_react_graph(llm, tools: list):
     return g.compile()
 
 
-# parallel_tool_calls=False prevents llama-3.3-70b from emitting its native
-# XML function-call format, which Groq's API validation rejects.
 _query_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=settings.groq_api_key,
 ).bind_tools(QUERY_TOOLS, parallel_tool_calls=False)
 
 _planning_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="openai/gpt-oss-120b",
     api_key=settings.groq_api_key,
 ).bind_tools(PLANNING_TOOLS, parallel_tool_calls=False)
 

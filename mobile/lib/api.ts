@@ -126,6 +126,11 @@ export const statementApi = {
     api.post("/statements/confirm", { approved }),
 };
 
+export const receiptApi = {
+  upload: (formData: FormData) =>
+    api.post("/receipts/upload", formData, { timeout: 60_000 }),
+};
+
 export interface ApprovedCandidate {
   transaction_date: string;
   merchant: string | null;
