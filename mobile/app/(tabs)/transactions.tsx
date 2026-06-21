@@ -11,8 +11,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { transactionApi } from "@/lib/api";
+import * as DocumentPicker from "expo-document-picker";
+import { transactionApi, statementApi } from "@/lib/api";
+import { setCandidates } from "@/lib/statementStore";
 
 interface Transaction {
   id: number;
@@ -25,8 +28,10 @@ interface Transaction {
 }
 
 export default function TransactionsScreen() {
+  const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<Transaction | null>(null);
 
@@ -47,6 +52,41 @@ export default function TransactionsScreen() {
       load();
     }, [])
   );
+
+  async function importPDF() {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const asset = result.assets[0];
+      const formData = new FormData();
+      formData.append("file", {
+        uri: asset.uri,
+        name: asset.name ?? "statement.pdf",
+        type: "application/pdf",
+      } as any);
+
+      setUploading(true);
+      const res = await statementApi.upload(formData);
+      const candidates = res.data.candidates as any[];
+
+      if (candidates.length === 0) {
+        Alert.alert("No transactions found", "The PDF did not contain any extractable transactions.");
+        return;
+      }
+
+      setCandidates(candidates);
+      router.push("/statement-review");
+    } catch (err: any) {
+      const detail = err.response?.data?.detail ?? err.message ?? "Upload failed.";
+      Alert.alert("Import failed", detail);
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function confirmDelete(item: Transaction) {
     Alert.alert(
@@ -106,12 +146,29 @@ export default function TransactionsScreen() {
     <SafeAreaView className="flex-1 bg-background">
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-border">
         <Text className="text-text-primary text-lg font-semibold">Transactions</Text>
-        <TouchableOpacity
-          className="bg-accent rounded-lg px-3 py-2"
-          onPress={() => setShowAdd(true)}
-        >
-          <Text className="text-white font-medium">+ Add</Text>
-        </TouchableOpacity>
+        <View className="flex-row items-center" style={{ gap: 8 }}>
+          <TouchableOpacity
+            className="bg-card border border-border rounded-lg px-3 py-2 flex-row items-center"
+            style={{ gap: 4 }}
+            onPress={importPDF}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <ActivityIndicator size="small" color="#8888A0" />
+            ) : (
+              <Feather name="upload" size={14} color="#8888A0" />
+            )}
+            <Text className="text-text-secondary font-medium text-sm">
+              {uploading ? "Parsing…" : "Import PDF"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="bg-accent rounded-lg px-3 py-2"
+            onPress={() => setShowAdd(true)}
+          >
+            <Text className="text-white font-medium">+ Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (

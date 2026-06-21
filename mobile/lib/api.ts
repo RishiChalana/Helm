@@ -115,3 +115,21 @@ export const insightApi = {
   list: () => api.get("/insights"),
   markRead: (id: number) => api.patch(`/insights/${id}/read`),
 };
+
+export const statementApi = {
+  upload: (formData: FormData) =>
+    api.post("/statements/upload", formData, {
+      // Do NOT set Content-Type manually — axios must set it with the multipart boundary
+      timeout: 60_000,
+    }),
+  confirm: (approved: ApprovedCandidate[]) =>
+    api.post("/statements/confirm", { approved }),
+};
+
+export interface ApprovedCandidate {
+  transaction_date: string;
+  merchant: string | null;
+  amount: number;
+  type: "debit" | "credit";
+  category: string;
+}
