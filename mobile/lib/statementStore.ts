@@ -4,7 +4,7 @@ export interface TransactionCandidate {
   description: string;
   merchant: string | null;
   amount: number;
-  type: "debit" | "credit";
+  type: string;
   category: string;
   is_duplicate: boolean;
   duplicate_detail: string | null;

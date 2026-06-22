@@ -10,13 +10,15 @@ A mobile-first personal finance app where an LLM agent is the primary interface,
 
 ## Tech Stack
 
-**Mobile:** React Native + Expo, TypeScript, NativeWind, React Navigation, `expo-notifications` (push), `expo-local-authentication` (biometric), Android widget via native module or Expo config plugin.
+**Mobile:** React Native + Expo SDK 51, TypeScript, NativeWind 4.x, expo-router, `expo-notifications` (push), `expo-local-authentication` (biometric), `@shopify/react-native-skia` (charts). Native dev client required (Expo Go incompatible).
 
-**Backend:** FastAPI, PostgreSQL + SQLAlchemy + Alembic (migrations), LangGraph for agent orchestration, Redis (cache + session), APScheduler (scheduled insight jobs).
+**Backend:** FastAPI, PostgreSQL + SQLAlchemy 2.0 async + Alembic, LangGraph for agent orchestration, Redis (rate-limit + session), APScheduler (scheduled insight/subscription jobs).
 
-**Auth:** JWT + refresh tokens (server-side), biometric gate client-side before reading local token.
+**Agent LLM:** Groq API — model `openai/gpt-oss-120b` for conversation, supervisor routing, and PDF extraction. Google Gemini 2.5 Flash (`google-genai` SDK) for receipt OCR.
 
-**Deploy:** Backend → Render/Railway. Mobile → Expo Go for demos/interviews (no app-store publishing required).
+**Auth:** JWT access tokens + refresh token rotation with server-side reuse detection; biometric gate client-side before reading local token.
+
+**Deploy:** Backend → Render/Railway. Mobile → native dev client build on Android emulator.
 
 ## Architecture
 
@@ -49,7 +51,7 @@ docs/
   adr/               # architecture decision records for key trade-offs
 ```
 
-## Phase 1 — Foundation (resume-grade on its own)
+## Phase 1 — Foundation ✅ COMPLETE
 
 - **Auth:** JWT + refresh token rotation, register/login, biometric gate on app open
 - **Core CRUD:** transactions, budgets — SQLAlchemy models + Pydantic schemas, real validation
@@ -62,21 +64,21 @@ docs/
 - **Multi-turn memory:** persist conversation thread per user; pass history into LangGraph state
 - **Proactive insight engine:** daily APScheduler job runs the agent in "insight mode," generates 0–3 candidate insights, filters for materiality (e.g., >15% budget pace deviation) before pushing — avoids notification fatigue from trivial alerts
 - **Scenario simulator UI:** slider-driven, instant recalculation
-- **Visual design:** dark-first palette, signature flowing cash-flow visualization, animated radial budget gauges (not stock charts)
-- **Biometric unlock + home-screen widget** (balance + budget pace)
+- **Visual design:** forest-dark palette (`#0e1511`), Skia cash-flow chart, flat budget pace bars
+- **Biometric unlock** (expo-local-authentication)
 
-## Phase 2 — Tier 1: Agent capability expansion
-*One at a time. Each fully working — backend + UI + tested — before starting the next.*
+## Phase 2 — Tier 1: Agent capability expansion ✅ COMPLETE
 
-1. **Multi-agent orchestration** — refactor the Phase 1 single agent into a supervisor + `categorization-agent` + `budget-watchdog-agent` + `insight-writer-agent` (LangGraph subgraphs). This is a refactor of working code, not a rebuild.
-2. **Closed-loop budget rebalancing** — `propose_reallocation` tool → explicit user confirmation screen → `execute_reallocation` tool (only callable post-confirmation) → logged undo entry.
-3. **Subscription audit agent** — detect recurring transactions, flag any unreviewed for 60+ days, draft a cancel-reminder (no usage-signal data available, so this is a review-prompt heuristic, not true usage detection — document that limitation).
-4. **Goal-setting agent** — analyze income/expense delta, propose a realistic savings goal with stated reasoning, create on confirm.
+1. **Multi-agent supervisor routing** ✅ — heuristic-first classifier (keyword match) with LLM fallback; three routes: `query` / `planning` / `both`. Query agent and planning agent have separate tool schemas — no cross-contamination. See ADR 004.
+2. **Closed-loop budget rebalancing** ✅ — `propose_reallocation` tool → ProposalCard (CONFIRM / DISMISS) inline in chat → `execute_reallocation` (only post-confirmation) → 30s undo window → audit log entry.
+3. **Goal-setting agent** ✅ — `propose_savings_goal` tool → GoalProposalCard (SET GOAL / DISMISS) → creates goal on confirm with monthly amount + timeline.
+4. **Subscription / recurring pattern detection** ✅ — `recurring_pattern` model + `subscription_service`; `get_subscriptions` query tool; daily insight job generates subscription insights.
 
-## Phase 3 — Tier 2: Multimodal / mobile-native flex
+## Phase 3 — Tier 2: Multimodal / mobile-native flex ✅ COMPLETE (receipt + PDF)
 
-1. **Receipt scanning** — photo → vision-capable model → structured line items → auto-categorized transaction draft, user confirms before it's saved.
-2. **SMS-based auto-capture** — **Android only.** Document the iOS limitation explicitly (iOS restricts third-party SMS access) — this must be a stated platform limitation, not a silent gap. Use regex + LLM fallback for parsing common Indian bank/UPI SMS formats.
+1. **Receipt scanning** ✅ — photo → Gemini 2.5 Flash → structured line items → review screen → bulk import. Model: `gemini-2.5-flash` via `google-genai` SDK. 25-second client-side timeout with user-friendly error message ("Couldn't read this as a receipt").
+2. **Bank statement PDF import** ✅ — PDF upload → `openai/gpt-oss-120b` (via Groq) extracts transactions → review screen with per-row edit/include controls + duplicate detection → bulk import.
+3. **SMS-based auto-capture** — **Not implemented.** iOS restricts third-party SMS access entirely; Android support deprioritized. Platform limitation, not a silent gap.
 
 ## Hard Rules (carried over from the FinTrack postmortem — do not violate)
 

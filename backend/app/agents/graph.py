@@ -39,13 +39,34 @@ _SUPERVISOR_SYSTEM = """\
 You are a routing supervisor for Helm, an AI finance assistant.
 Classify the user's intent into exactly one of these three labels:
 
-query    – needs current financial data only
-           (transactions, budget status, spending totals, cashflow projections).
-planning – pure hypothetical/what-if when the user already supplies all parameters
-           (e.g. "if I save 5000/month, how long to reach 100000?").
-both     – compound: needs CURRENT data first, THEN a hypothetical applied to it.
-           Signal: the message contains "what is my X?" AND "what would happen if Y?"
-           in the same turn (e.g. "what is my budget pace AND what if I cut dining by 20%?").
+query    – needs current financial data only (transactions, budget status, spending
+           totals, cashflow projections, subscription detection). No action needed.
+
+planning – requires an action or hypothetical modelling. Route here when the user
+           wants to:
+           • REALLOCATE budget between categories ("free up", "cut X to fund Y",
+             "move money from X to Y", "reallocate", "I want more budget for X",
+             "can I free up", "free up budget for")
+           • SET A SAVINGS GOAL ("save for", "set a goal", "I want to buy X",
+             "savings plan", "help me save", "savings goal")
+           • RUN A WHAT-IF with all parameters already supplied
+             (e.g. "if I save ₹5,000/month, how long to reach ₹100,000?",
+              "what if I cut dining by 20%?")
+
+both     – compound: needs CURRENT data first, THEN an action/hypothetical.
+           Signal: same message asks "what is my X?" AND "what would happen if Y?"
+           (e.g. "what is my budget pace AND what if I cut dining by 20%?").
+
+Examples:
+"Can I free up budget for dining by cutting entertainment?" → planning
+"Help me reallocate budget from transport to food" → planning
+"Set a savings goal to save ₹50,000 for a vacation" → planning
+"What would happen if I cut dining by 20%?" → planning
+"If I save ₹5,000 a month how long to reach ₹100,000?" → planning
+"What is my budget status?" → query
+"Show me my transactions this month" → query
+"How much did I spend on food?" → query
+"What is my budget pace AND what would happen if I cut dining by 20%?" → both
 
 Reply with a single word: query, planning, or both. No punctuation, no explanation.
 """
@@ -61,7 +82,16 @@ _supervisor_llm = ChatGroq(
 
 
 async def _classify_intent(user_message: str) -> Literal["query", "planning", "both"]:
-    """Plain-text supervisor call: returns one of query / planning / both."""
+    """Classify intent: heuristic takes precedence for explicit planning signals."""
+    # Heuristic runs first — it only fires on unambiguous planning keywords
+    # (reallocation, savings goal, what-if).  When it produces a non-query result,
+    # trust it rather than letting the LLM supervisor override it.
+    heuristic = _heuristic_route(user_message)
+    if heuristic != "query":
+        log.info("[supervisor] heuristic route=%s  message=%r", heuristic, user_message[:80])
+        return heuristic
+
+    # No strong planning signal — ask the LLM for nuanced classification.
     try:
         response = await _supervisor_llm.ainvoke([
             SystemMessage(content=_SUPERVISOR_SYSTEM),
@@ -76,15 +106,20 @@ async def _classify_intent(user_message: str) -> Literal["query", "planning", "b
             route = "query"
     except Exception as exc:
         log.warning("Supervisor LLM failed (%s); using heuristic fallback.", exc)
-        route = _heuristic_route(user_message)
-    log.info("[supervisor] route=%s  message=%r", route, user_message[:80])
+        route = heuristic
+    log.info("[supervisor] llm route=%s  message=%r", route, user_message[:80])
     return route
 
 
 def _heuristic_route(msg: str) -> Literal["query", "planning", "both"]:
     """Keyword fallback if the supervisor LLM call fails."""
     m = msg.lower()
-    planning_signals = {"what if", "what would happen", "if i cut", "simulate", "scenario"}
+    planning_signals = {
+        "what if", "what would happen", "if i cut", "simulate", "scenario",
+        "reallocate", "reallocation", "free up", "cut dining", "cut entertainment",
+        "move money", "fund dining", "fund ", "set a goal", "save for", "savings goal",
+        "i want to buy", "can i free",
+    }
     query_signals = {"budget", "pace", "spending", "transactions", "balance", "cashflow", "how much"}
     has_planning = any(s in m for s in planning_signals)
     has_query = any(s in m for s in query_signals)
@@ -155,7 +190,34 @@ _planning_graph = _build_react_graph(_planning_llm, PLANNING_TOOLS)
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
-def _system_prompt(extra: str = "") -> SystemMessage:
+_PLANNING_TOOL_RULES = """\
+PLANNING TOOL SELECTION — read this before choosing a tool:
+
+1. propose_reallocation — use when the user wants to MOVE budget money from one \
+category to free up room in another. Keywords: "free up budget", "cut X to fund Y", \
+"move money from X to Y", "reallocate", "reduce X so I can spend more on Y".
+   Example: "Can I free up budget for dining by cutting entertainment?" \
+→ call propose_reallocation (NOT simulate_scenario).
+
+2. propose_savings_goal — use when the user wants to SET A SAVINGS GOAL or save \
+toward a target. Keywords: "save for", "set a goal", "savings plan", "I want to buy", \
+"how can I save up for".
+   Example: "Help me set a goal to save ₹50,000 for a trip" \
+→ call propose_savings_goal (NOT simulate_scenario).
+
+3. simulate_scenario — use ONLY for read-only hypothetical analysis where the user \
+wants to SEE the effect of a change without committing to it. Keywords: "what would \
+happen if", "what if I cut", "how much would I save if", "project", "forecast".
+   Example: "What would happen if I cut dining by 20%?" \
+→ call simulate_scenario.
+
+CRITICAL: simulate_scenario is read-only; it cannot create proposals the user can \
+confirm. If the user wants to actually reallocate or set a goal, you MUST call \
+propose_reallocation or propose_savings_goal instead.
+"""
+
+
+def _system_prompt(extra: str = "", planning: bool = False) -> SystemMessage:
     today = date.today().isoformat()
     content = (
         f"Today's date is {today}. "
@@ -168,6 +230,8 @@ def _system_prompt(extra: str = "") -> SystemMessage:
         "get_transactions. get_transactions is for fetching individual line-item records; "
         "get_spending_summary is for totals and breakdowns."
     )
+    if planning:
+        content += f"\n\n{_PLANNING_TOOL_RULES}"
     if extra:
         content += f"\n\n{extra}"
     return SystemMessage(content=content)
@@ -177,8 +241,9 @@ def _build_messages(
     history: list[dict],
     user_message: str,
     extra_system: str = "",
+    planning: bool = False,
 ) -> list[BaseMessage]:
-    msgs: list[BaseMessage] = [_system_prompt(extra_system)]
+    msgs: list[BaseMessage] = [_system_prompt(extra_system, planning=planning)]
     for m in history:
         if m["role"] == "user":
             msgs.append(HumanMessage(content=m["content"]))
@@ -232,7 +297,7 @@ async def run_agent(history: list[dict], user_message: str) -> str:
 
     if route == "planning":
         log.info("[chain] planning_agent")
-        return await _invoke(_planning_graph, _build_messages(history, user_message))
+        return await _invoke(_planning_graph, _build_messages(history, user_message, planning=True))
 
     # route == "both": query agent → planning agent
     log.info("[chain] query_agent → planning_agent")
@@ -246,7 +311,7 @@ async def run_agent(history: list[dict], user_message: str) -> str:
         "Use that data to answer the hypothetical part of the user's question. "
         "You do not need to re-fetch any data."
     )
-    planning_messages = _build_messages(history, user_message, extra_system=planning_extra)
+    planning_messages = _build_messages(history, user_message, extra_system=planning_extra, planning=True)
     reply = await _invoke(_planning_graph, planning_messages)
     log.info("[chain] planning_agent replied: %r", reply[:120])
     return reply

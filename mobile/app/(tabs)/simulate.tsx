@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { View, Text, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Slider from "@react-native-community/slider";
-import { agentApi } from "@/lib/api";
+import { T, F, fmtINR } from "@/lib/design";
 
 interface SimResult {
   months_to_goal_current: number | null;
@@ -15,115 +15,98 @@ export default function SimulateScreen() {
   const [currentSavings, setCurrentSavings] = useState(5000);
   const [savingsIncrease, setSavingsIncrease] = useState(1000);
   const [goalAmount, setGoalAmount] = useState(100000);
-  const [result, setResult] = useState<SimResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<SimResult>(() => calcResult(5000, 1000, 100000));
 
-  const runSimulation = useCallback(async () => {
-    setLoading(true);
-    try {
-      const prompt =
-        `simulate_scenario: current_monthly_savings=${currentSavings}, ` +
-        `monthly_savings_increase=${savingsIncrease}, goal_amount=${goalAmount}`;
-      const res = await agentApi.chat(prompt);
-      // The agent will invoke the simulate_scenario tool and return structured text.
-      // We parse a simplified version here; the agent reply is shown as text.
-      setResult({
-        months_to_goal_current: currentSavings > 0 ? goalAmount / currentSavings : null,
-        months_to_goal_new:
-          currentSavings + savingsIncrease > 0
-            ? goalAmount / (currentSavings + savingsIncrease)
-            : null,
-        months_saved:
-          currentSavings > 0 && currentSavings + savingsIncrease > 0
-            ? goalAmount / currentSavings - goalAmount / (currentSavings + savingsIncrease)
-            : null,
-        increased_monthly_savings: currentSavings + savingsIncrease,
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [currentSavings, savingsIncrease, goalAmount]);
-
-  // Recalculate immediately on slider change (client-side math, no API call for instant feedback)
-  function recalc(cs: number, si: number, ga: number) {
+  function calcResult(cs: number, si: number, ga: number): SimResult {
     const newSavings = cs + si;
-    setResult({
+    return {
       months_to_goal_current: cs > 0 ? ga / cs : null,
       months_to_goal_new: newSavings > 0 ? ga / newSavings : null,
       months_saved: cs > 0 && newSavings > 0 ? ga / cs - ga / newSavings : null,
       increased_monthly_savings: newSavings,
-    });
+    };
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="px-4 py-3 border-b border-border">
-        <Text className="text-text-primary text-lg font-semibold">Scenario Simulator</Text>
-        <Text className="text-text-secondary text-xs">Adjust sliders to see the impact instantly</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      {/* Header */}
+      <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: T.border }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textDim }}>
+          SIMULATE
+        </Text>
+        <Text style={{ fontFamily: F.sans, fontSize: 14, lineHeight: 20, color: T.textSecondary, marginTop: 4 }}>
+          Adjust sliders to see the impact instantly
+        </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>
         <SliderCard
-          label="Current monthly savings"
+          label="CURRENT MONTHLY SAVINGS"
           value={currentSavings}
+          displayValue={fmtINR(currentSavings)}
           min={0}
           max={50000}
           step={500}
-          format={(v) => `₹${v.toLocaleString()}`}
           onChange={(v) => {
             setCurrentSavings(v);
-            recalc(v, savingsIncrease, goalAmount);
+            setResult(calcResult(v, savingsIncrease, goalAmount));
           }}
         />
 
         <SliderCard
-          label="Extra savings per month"
+          label="EXTRA SAVINGS PER MONTH"
           value={savingsIncrease}
+          displayValue={"+" + fmtINR(savingsIncrease)}
           min={0}
           max={20000}
           step={500}
-          format={(v) => `+₹${v.toLocaleString()}`}
           onChange={(v) => {
             setSavingsIncrease(v);
-            recalc(currentSavings, v, goalAmount);
+            setResult(calcResult(currentSavings, v, goalAmount));
           }}
         />
 
         <SliderCard
-          label="Savings goal"
+          label="SAVINGS GOAL"
           value={goalAmount}
+          displayValue={fmtINR(goalAmount)}
           min={10000}
           max={1000000}
           step={10000}
-          format={(v) => `₹${v.toLocaleString()}`}
           onChange={(v) => {
             setGoalAmount(v);
-            recalc(currentSavings, savingsIncrease, v);
+            setResult(calcResult(currentSavings, savingsIncrease, v));
           }}
         />
 
-        {result && (
-          <View className="bg-card rounded-2xl p-5 mt-4 border border-border">
-            <Text className="text-text-primary text-base font-semibold mb-4">Projection</Text>
+        {/* Projection card */}
+        <View style={{ backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, padding: 20, marginTop: 8 }}>
+          <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 20 }}>
+            PROJECTION
+          </Text>
 
-            <Row
-              label="At current pace"
-              value={result.months_to_goal_current != null ? `${result.months_to_goal_current.toFixed(1)} months` : "—"}
-            />
-            <Row
-              label={`Saving ₹${result.increased_monthly_savings.toLocaleString()}/mo`}
-              value={result.months_to_goal_new != null ? `${result.months_to_goal_new.toFixed(1)} months` : "—"}
-              highlight
-            />
-            {result.months_saved != null && result.months_saved > 0 && (
-              <View className="mt-3 bg-accent/10 rounded-xl p-3">
-                <Text className="text-accent text-sm font-medium text-center">
-                  You'd reach your goal {result.months_saved.toFixed(1)} months sooner
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
+          <ProjectionRow
+            label="At current pace"
+            value={result.months_to_goal_current != null
+              ? `${result.months_to_goal_current.toFixed(1)} mo`
+              : "—"}
+          />
+          <ProjectionRow
+            label={`Saving ${fmtINR(result.increased_monthly_savings)}/mo`}
+            value={result.months_to_goal_new != null
+              ? `${result.months_to_goal_new.toFixed(1)} mo`
+              : "—"}
+            accent
+          />
+
+          {result.months_saved != null && result.months_saved > 0 && (
+            <View style={{ marginTop: 16, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 4, padding: 12 }}>
+              <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.emerald, textAlign: "center" }}>
+                REACH YOUR GOAL {result.months_saved.toFixed(1)} MONTHS SOONER
+              </Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -132,25 +115,29 @@ export default function SimulateScreen() {
 function SliderCard({
   label,
   value,
+  displayValue,
   min,
   max,
   step,
-  format,
   onChange,
 }: {
   label: string;
   value: number;
+  displayValue: string;
   min: number;
   max: number;
   step: number;
-  format: (v: number) => string;
   onChange: (v: number) => void;
 }) {
   return (
-    <View className="bg-card rounded-2xl p-4 mb-4 border border-border">
-      <View className="flex-row justify-between mb-2">
-        <Text className="text-text-secondary text-sm">{label}</Text>
-        <Text className="text-text-primary font-semibold">{format(value)}</Text>
+    <View style={{ backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, padding: 16, marginBottom: 12 }}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary }}>
+          {label}
+        </Text>
+        <Text style={{ fontFamily: F.mono, fontSize: 16, lineHeight: 22, color: T.textPrimary }}>
+          {displayValue}
+        </Text>
       </View>
       <Slider
         minimumValue={min}
@@ -158,27 +145,29 @@ function SliderCard({
         step={step}
         value={value}
         onValueChange={onChange}
-        minimumTrackTintColor="#6C63FF"
-        maximumTrackTintColor="#2A2A3A"
-        thumbTintColor="#6C63FF"
+        minimumTrackTintColor={T.emerald}
+        maximumTrackTintColor={T.border}
+        thumbTintColor={T.emerald}
       />
     </View>
   );
 }
 
-function Row({
+function ProjectionRow({
   label,
   value,
-  highlight,
+  accent,
 }: {
   label: string;
   value: string;
-  highlight?: boolean;
+  accent?: boolean;
 }) {
   return (
-    <View className="flex-row justify-between mb-2">
-      <Text className="text-text-secondary text-sm">{label}</Text>
-      <Text className={`text-sm font-medium ${highlight ? "text-accent-2" : "text-text-primary"}`}>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <Text style={{ fontFamily: F.sans, fontSize: 14, lineHeight: 20, color: T.textSecondary }}>
+        {label}
+      </Text>
+      <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: accent ? T.emerald : T.textPrimary }}>
         {value}
       </Text>
     </View>

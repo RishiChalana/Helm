@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
-import { Feather } from "@expo/vector-icons";
 import { budgetApi } from "@/lib/api";
+import { T, F, fmtINR, apiErrMsg } from "@/lib/design";
 
 interface BudgetOut {
   id: number;
@@ -45,7 +45,7 @@ export default function BudgetsScreen() {
       const budgetsRes = await budgetApi.list();
       const budgets = budgetsRes.data;
       const statusResults = await Promise.all(
-        budgets.map((b: any) => budgetApi.status(b.id).then((r) => r.data))
+        budgets.map((b: any) => budgetApi.status(b.id).then((r: any) => r.data))
       );
       setStatuses(statusResults);
     } catch {
@@ -55,16 +55,12 @@ export default function BudgetsScreen() {
     }
   }
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { load(); }, []));
 
   function confirmDelete(item: BudgetStatus) {
     Alert.alert(
       "Delete Budget",
-      `Delete ${item.budget.category} budget (₹${item.budget.limit_amount.toFixed(0)} limit)?`,
+      `Delete ${item.budget.category} budget (${fmtINR(item.budget.limit_amount)} limit)?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -84,46 +80,52 @@ export default function BudgetsScreen() {
   }
 
   function renderItem({ item }: { item: BudgetStatus }) {
-    const fillWidth = Math.min(item.pace_percent, 100);
+    const pct = Math.min(item.pace_percent, 100);
+    const barColor = item.is_over_budget ? T.coral : item.pace_percent > 80 ? T.gold : T.emerald;
     const isOver = item.is_over_budget;
-    const barColor = isOver ? "#FF4F6E" : item.pace_percent > 80 ? "#FFB347" : "#6C63FF";
 
     return (
       <TouchableOpacity
-        className="bg-card rounded-xl px-4 py-4 mb-3 border border-border"
+        style={{ backgroundColor: T.card, borderBottomWidth: 1, borderBottomColor: T.border, paddingHorizontal: 20, paddingVertical: 20 }}
         onPress={() => setEditTarget(item)}
         activeOpacity={0.7}
       >
-        <View className="flex-row justify-between mb-2">
-          <Text className="text-text-primary font-semibold text-base">{item.budget.category}</Text>
-          <View className="flex-row items-center" style={{ gap: 10 }}>
-            <Text className={isOver ? "text-danger font-semibold" : "text-text-secondary"}>
-              {item.pace_percent.toFixed(0)}%
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary }}>
+            {item.budget.category.toUpperCase()}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: isOver ? T.coral : T.textDim }}>
+              {Math.round(item.pace_percent)}%
             </Text>
             <TouchableOpacity onPress={() => confirmDelete(item)} hitSlop={8}>
-              <Feather name="trash-2" size={18} color="#FF4F6E" />
+              <Text style={{ fontFamily: F.sansMedium, fontSize: 14, color: T.coral }}>✕</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View className="h-2 bg-surface rounded-full mb-3">
-          <View
-            style={{ width: `${fillWidth}%`, backgroundColor: barColor }}
-            className="h-2 rounded-full"
-          />
+        {/* Flat progress bar */}
+        <View style={{ height: 1, backgroundColor: T.border, marginBottom: 12 }}>
+          <View style={{ width: `${pct}%`, backgroundColor: barColor, height: 1 }} />
         </View>
 
-        <View className="flex-row justify-between">
-          <Text className="text-text-secondary text-sm">
-            Spent <Text className="text-text-primary">₹{item.spent.toFixed(0)}</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textDim }}>
+            spent{" "}
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+              {fmtINR(item.spent)}
+            </Text>
           </Text>
-          <Text className="text-text-secondary text-sm">
-            Limit <Text className="text-text-primary">₹{item.budget.limit_amount.toFixed(0)}</Text>
+          <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textDim }}>
+            limit{" "}
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+              {fmtINR(item.budget.limit_amount)}
+            </Text>
           </Text>
         </View>
         {item.projected_spend > item.budget.limit_amount && (
-          <Text className="text-danger text-xs mt-2">
-            Projected ₹{item.projected_spend.toFixed(0)} — over by end of month
+          <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.coral, marginTop: 8 }}>
+            PROJECTED {fmtINR(item.projected_spend)} — OVER BY MONTH END
           </Text>
         )}
       </TouchableOpacity>
@@ -131,29 +133,41 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-border">
-        <Text className="text-text-primary text-lg font-semibold">Budgets</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      {/* Header */}
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: T.border }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textDim }}>
+          BUDGETS
+        </Text>
         <TouchableOpacity
-          className="bg-accent rounded-lg px-3 py-2"
+          style={{ borderWidth: 1, borderColor: T.emerald, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 6 }}
           onPress={() => setShowAdd(true)}
         >
-          <Text className="text-white font-medium">+ Add</Text>
+          <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.emerald }}>
+            + NEW
+          </Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <ActivityIndicator className="mt-10" color="#6C63FF" />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={T.emerald} />
+        </View>
       ) : (
         <FlatList
           data={statuses}
           keyExtractor={(s) => String(s.budget.id)}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: 16 }}
+          contentContainerStyle={{ paddingBottom: 32 }}
           ListEmptyComponent={
-            <Text className="text-text-secondary text-center mt-10">
-              No budgets for this month.
-            </Text>
+            <View style={{ alignItems: "center", marginTop: 64, paddingHorizontal: 32 }}>
+              <Text style={{ fontFamily: F.serif, fontSize: 24, lineHeight: 31, color: T.textPrimary, textAlign: "center", marginBottom: 8 }}>
+                No budgets
+              </Text>
+              <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 24, color: T.textSecondary, textAlign: "center" }}>
+                Set a monthly limit for a spending category to track your pace.
+              </Text>
+            </View>
           }
         />
       )}
@@ -161,19 +175,13 @@ export default function BudgetsScreen() {
       <BudgetModal
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        onSaved={() => {
-          setShowAdd(false);
-          load();
-        }}
+        onSaved={() => { setShowAdd(false); load(); }}
       />
       <BudgetModal
         visible={editTarget !== null}
         budgetStatus={editTarget ?? undefined}
         onClose={() => setEditTarget(null)}
-        onSaved={() => {
-          setEditTarget(null);
-          load();
-        }}
+        onSaved={() => { setEditTarget(null); load(); }}
       />
     </SafeAreaView>
   );
@@ -192,9 +200,7 @@ function BudgetModal({
 }) {
   const isEdit = !!budgetStatus;
   const [category, setCategory] = useState(budgetStatus?.budget.category ?? "");
-  const [limit, setLimit] = useState(
-    budgetStatus ? String(budgetStatus.budget.limit_amount) : ""
-  );
+  const [limit, setLimit] = useState(budgetStatus ? String(budgetStatus.budget.limit_amount) : "");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -209,8 +215,7 @@ function BudgetModal({
     }
     const today = new Date();
     const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const periodStart =
-      budgetStatus?.budget.period_start ?? `${today.getFullYear()}-${mm}-01`;
+    const periodStart = budgetStatus?.budget.period_start ?? `${today.getFullYear()}-${mm}-01`;
 
     setLoading(true);
     try {
@@ -228,55 +233,70 @@ function BudgetModal({
           period: "monthly",
           period_start: periodStart,
         });
-        setCategory("");
-        setLimit("");
+        setCategory(""); setLimit("");
       }
       onSaved();
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.detail ?? "Could not save budget.");
+      Alert.alert("Error", apiErrMsg(err, "Could not save budget."));
     } finally {
       setLoading(false);
     }
   }
 
+  const inputStyle = {
+    fontFamily: F.mono,
+    fontSize: 14,
+    lineHeight: 20,
+    color: T.textPrimary,
+    backgroundColor: T.card,
+    borderWidth: 1,
+    borderColor: T.border,
+    borderRadius: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+  };
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <View className="flex-1 bg-background px-6 pt-6">
-        <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-text-primary text-xl font-bold">
+      <View style={{ flex: 1, backgroundColor: T.bg, paddingHorizontal: 24, paddingTop: 24 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <Text style={{ fontFamily: F.serif, fontSize: 24, lineHeight: 31, color: T.textPrimary }}>
             {isEdit ? "Edit Budget" : "New Budget"}
           </Text>
           <TouchableOpacity onPress={onClose}>
-            <Text className="text-accent text-base">Cancel</Text>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textDim }}>
+              CANCEL
+            </Text>
           </TouchableOpacity>
         </View>
 
         <TextInput
-          className="bg-card text-text-primary rounded-xl px-4 py-4 mb-4 text-base border border-border"
+          style={inputStyle}
           placeholder="Category (e.g. Food, Rent)"
-          placeholderTextColor="#8888A0"
+          placeholderTextColor={T.textDim}
           value={category}
           onChangeText={setCategory}
         />
         <TextInput
-          className="bg-card text-text-primary rounded-xl px-4 py-4 mb-6 text-base border border-border"
+          style={{ ...inputStyle, marginBottom: 24 }}
           placeholder="Monthly limit (₹)"
-          placeholderTextColor="#8888A0"
+          placeholderTextColor={T.textDim}
           keyboardType="numeric"
           value={limit}
           onChangeText={setLimit}
         />
 
         <TouchableOpacity
-          className="bg-accent rounded-xl py-4 items-center"
+          style={{ backgroundColor: T.emerald, borderRadius: 4, paddingVertical: 14, alignItems: "center", opacity: loading ? 0.5 : 1 }}
           onPress={save}
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={T.textInverse} />
           ) : (
-            <Text className="text-white font-semibold text-base">
-              {isEdit ? "Save Changes" : "Create Budget"}
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textInverse }}>
+              {isEdit ? "SAVE CHANGES" : "CREATE BUDGET"}
             </Text>
           )}
         </TouchableOpacity>

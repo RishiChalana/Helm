@@ -15,6 +15,11 @@ android/.gradle/
 ios/build/
 ios/Pods/
 ios/DerivedData/
+android/app/release/
+ios/build/
+ios/Pods/
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
 
 # ─── Secrets ─────────────────────────────────────────────────────────────────
 .env
@@ -43,3 +48,8 @@ yarn-error.log*
 # ─── IDE ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
+
+# ─── Expo dev client build artifacts ─────────────────────────────────────────
+android/app/debug/
+*.apk
+*.aab

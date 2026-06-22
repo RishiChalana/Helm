@@ -2,6 +2,24 @@
 node_modules/
 .pnp
 .pnp.js
+.yarn/
+
+# ─── Python (backend) ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
 
 # ─── macOS ───────────────────────────────────────────────────────────────────
 .DS_Store
@@ -10,6 +28,7 @@ node_modules/
 ._*
 .Spotlight-V100
 .Trashes
+Icon?
 
 # ─── IDE / Editors ───────────────────────────────────────────────────────────
 .vscode/
@@ -19,6 +38,7 @@ node_modules/
 *.njsproj
 *.sln
 *.sw?
+*.swp
 
 # ─── Logs ────────────────────────────────────────────────────────────────────
 *.log
@@ -34,3 +54,14 @@ pnpm-debug.log*
 !.env.example
 *.pem
 *.key
+*.p8
+
+# ─── Test / coverage ─────────────────────────────────────────────────────────
+coverage/
+*.lcov
+.nyc_output/
+
+# ─── Temporary ───────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+Thumbs.db

@@ -39,6 +39,16 @@ htmlcov/
 *.log
 logs/
 
+# ─── Uploads (temp files from receipt/statement processing) ───────────────────
+uploads/
+
+# ─── Profiling ────────────────────────────────────────────────────────────────
+*.prof
+*.pstats
+
+# ─── Test reports ─────────────────────────────────────────────────────────────
+junit*.xml
+
 # ─── macOS ────────────────────────────────────────────────────────────────────
 .DS_Store
 

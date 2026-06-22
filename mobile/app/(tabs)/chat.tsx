@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { agentApi, reallocationApi, goalApi } from "@/lib/api";
+import { T, F, fmtINR, apiErrMsg } from "@/lib/design";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,23 +90,59 @@ function ProposalCard({
   if (state.status === "pending") {
     const p = state.data;
     return (
-      <View className="mt-2 rounded-xl border border-accent bg-surface px-4 py-4">
-        <Text className="text-accent text-xs font-semibold mb-1 uppercase tracking-wide">
-          Budget Reallocation Proposal
+      <View style={{ marginTop: 12, backgroundColor: T.card, borderWidth: 1, borderColor: T.borderHi, borderRadius: 4, padding: 16 }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.gold, marginBottom: 12 }}>
+          BUDGET REALLOCATION
         </Text>
-        <Text className="text-text-primary text-sm mb-3 leading-5">{p.description}</Text>
-        <View className="flex-row gap-3">
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <View style={{ flex: 1, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 4, padding: 12 }}>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 4 }}>
+              FROM
+            </Text>
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+              {p.from_category}
+            </Text>
+            <Text style={{ fontFamily: F.mono, fontSize: 11, lineHeight: 16, color: T.coral, marginTop: 4 }}>
+              {fmtINR(p.from_new_limit)} limit
+            </Text>
+          </View>
+
+          <Text style={{ fontFamily: F.sans, fontSize: 16, color: T.textDim }}>→</Text>
+
+          <View style={{ flex: 1, backgroundColor: T.surface, borderWidth: 1, borderColor: T.border, borderRadius: 4, padding: 12 }}>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 4 }}>
+              TO
+            </Text>
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+              {p.to_category}
+            </Text>
+            <Text style={{ fontFamily: F.mono, fontSize: 11, lineHeight: 16, color: T.emerald, marginTop: 4 }}>
+              {p.to_new_limit != null ? `${fmtINR(p.to_new_limit)} limit` : `+${fmtINR(p.amount)}`}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 26, color: T.textSecondary, marginBottom: 16 }}>
+          {p.description}
+        </Text>
+
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
-            className="flex-1 bg-accent rounded-lg py-3 items-center"
+            style={{ flex: 1, backgroundColor: T.emerald, borderRadius: 4, paddingVertical: 12, alignItems: "center" }}
             onPress={onConfirm}
           >
-            <Text className="text-white font-semibold text-sm">Confirm</Text>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textInverse }}>
+              CONFIRM
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 bg-card border border-border rounded-lg py-3 items-center"
+            style={{ flex: 1, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingVertical: 12, alignItems: "center" }}
             onPress={onDismiss}
           >
-            <Text className="text-text-secondary font-semibold text-sm">Dismiss</Text>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary }}>
+              DISMISS
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -114,13 +151,17 @@ function ProposalCard({
 
   if (state.status === "confirmed" && secondsLeft > 0) {
     return (
-      <View className="mt-2 rounded-xl border border-accent-2 bg-surface px-4 py-3 flex-row items-center justify-between">
-        <Text className="text-accent-2 text-sm font-medium">Budgets updated ✓</Text>
+      <View style={{ marginTop: 12, backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.emerald }}>
+          BUDGETS UPDATED ✓
+        </Text>
         <TouchableOpacity
-          className="bg-card border border-border rounded-lg px-3 py-2"
+          style={{ borderWidth: 1, borderColor: T.borderHi, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8 }}
           onPress={onUndo}
         >
-          <Text className="text-text-primary text-sm font-medium">Undo ({secondsLeft}s)</Text>
+          <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+            Undo ({secondsLeft}s)
+          </Text>
         </TouchableOpacity>
       </View>
     );
@@ -128,8 +169,10 @@ function ProposalCard({
 
   if (state.status === "undone") {
     return (
-      <View className="mt-2 rounded-xl border border-border bg-surface px-4 py-3">
-        <Text className="text-text-secondary text-sm">Reallocation undone — budgets reverted.</Text>
+      <View style={{ marginTop: 12, backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 24, color: T.textDim }}>
+          Reallocation undone — budgets reverted.
+        </Text>
       </View>
     );
   }
@@ -151,51 +194,66 @@ function GoalProposalCard({
   if (state.status === "pending") {
     const p = state.data;
     return (
-      <View className="mt-2 rounded-xl border border-accent-2 bg-surface px-4 py-4">
-        <Text className="text-accent-2 text-xs font-semibold mb-1 uppercase tracking-wide">
-          Savings Goal Proposal
+      <View style={{ marginTop: 12, backgroundColor: T.card, borderWidth: 1, borderColor: T.borderHi, borderRadius: 4, padding: 16 }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.gold, marginBottom: 12 }}>
+          SAVINGS GOAL
         </Text>
-        <Text className="text-text-primary font-semibold text-base mb-1">{p.description}</Text>
 
-        <View className="flex-row gap-4 mb-3 mt-1">
-          <View className="flex-1">
-            <Text className="text-text-secondary text-xs mb-0.5">Monthly savings</Text>
-            <Text className="text-text-primary font-semibold text-sm">
-              ₹{p.monthly_amount.toLocaleString("en-IN")}
+        <Text style={{ fontFamily: F.serif, fontSize: 24, lineHeight: 31, color: T.textPrimary, marginBottom: 12 }}>
+          {p.description}
+        </Text>
+
+        <View style={{ flexDirection: "row", marginBottom: 12, gap: 16 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 4 }}>
+              MONTHLY
+            </Text>
+            <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+              {fmtINR(p.monthly_amount)}
             </Text>
           </View>
           {p.target_amount > 0 && (
-            <View className="flex-1">
-              <Text className="text-text-secondary text-xs mb-0.5">Target</Text>
-              <Text className="text-text-primary font-semibold text-sm">
-                ₹{p.target_amount.toLocaleString("en-IN")}
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 4 }}>
+                TARGET
+              </Text>
+              <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
+                {fmtINR(p.target_amount)}
               </Text>
             </View>
           )}
           {p.months_to_goal !== null && (
-            <View className="flex-1">
-              <Text className="text-text-secondary text-xs mb-0.5">Timeline</Text>
-              <Text className="text-text-primary font-semibold text-sm">
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary, marginBottom: 4 }}>
+                TIMELINE
+              </Text>
+              <Text style={{ fontFamily: F.mono, fontSize: 14, lineHeight: 20, color: T.textPrimary }}>
                 {p.months_to_goal} mo
               </Text>
             </View>
           )}
         </View>
 
-        <Text className="text-text-secondary text-xs leading-4 mb-3">{p.reasoning}</Text>
+        <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 24, color: T.textSecondary, marginBottom: 16 }}>
+          {p.reasoning}
+        </Text>
 
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity
-            className="flex-1 bg-accent-2 rounded-lg py-3 items-center"
+            style={{ flex: 1, backgroundColor: T.gold, borderRadius: 4, paddingVertical: 12, alignItems: "center" }}
             onPress={onConfirm}
           >
-            <Text className="text-white font-semibold text-sm">Set Goal</Text>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textInverse }}>
+              SET GOAL
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 bg-card border border-border rounded-lg py-3 items-center"
+            style={{ flex: 1, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingVertical: 12, alignItems: "center" }}
             onPress={onDismiss}
           >
-            <Text className="text-text-secondary font-semibold text-sm">Dismiss</Text>
+            <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textSecondary }}>
+              DISMISS
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -204,8 +262,10 @@ function GoalProposalCard({
 
   if (state.status === "confirmed") {
     return (
-      <View className="mt-2 rounded-xl border border-accent-2 bg-surface px-4 py-3">
-        <Text className="text-accent-2 text-sm font-medium">Goal created ✓</Text>
+      <View style={{ marginTop: 12, backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.gold }}>
+          GOAL CREATED ✓
+        </Text>
       </View>
     );
   }
@@ -248,16 +308,10 @@ export default function ChatScreen() {
       setMessages((prev) => {
         const idx = prev.length;
         if (newMsg.proposal) {
-          setReallocationStates((ps) => ({
-            ...ps,
-            [idx]: { status: "pending", data: newMsg.proposal! },
-          }));
+          setReallocationStates((ps) => ({ ...ps, [idx]: { status: "pending", data: newMsg.proposal! } }));
         }
         if (newMsg.goal_proposal) {
-          setGoalStates((gs) => ({
-            ...gs,
-            [idx]: { status: "pending", data: newMsg.goal_proposal! },
-          }));
+          setGoalStates((gs) => ({ ...gs, [idx]: { status: "pending", data: newMsg.goal_proposal! } }));
         }
         return [...prev, newMsg];
       });
@@ -271,21 +325,15 @@ export default function ChatScreen() {
     }
   }
 
-  // ── Reallocation handlers ─────────────────────────────────────────────────
-
   async function handleReallocationConfirm(msgIdx: number, proposal: ReallocationProposal) {
     try {
       await reallocationApi.execute(proposal.proposal_id);
       setReallocationStates((ps) => ({
         ...ps,
-        [msgIdx]: {
-          status: "confirmed",
-          audit_log_id: proposal.audit_log_id,
-          undoDeadline: Date.now() + 30_000,
-        },
+        [msgIdx]: { status: "confirmed", audit_log_id: proposal.audit_log_id, undoDeadline: Date.now() + 30_000 },
       }));
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.detail ?? "Could not apply reallocation.");
+      Alert.alert("Error", apiErrMsg(err, "Could not apply reallocation."));
     }
   }
 
@@ -294,15 +342,13 @@ export default function ChatScreen() {
       await reallocationApi.undo(audit_log_id);
       setReallocationStates((ps) => ({ ...ps, [msgIdx]: { status: "undone" } }));
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.detail ?? "Could not undo reallocation.");
+      Alert.alert("Error", apiErrMsg(err, "Could not undo reallocation."));
     }
   }
 
   function handleReallocationDismiss(msgIdx: number) {
     setReallocationStates((ps) => ({ ...ps, [msgIdx]: { status: "dismissed" } }));
   }
-
-  // ── Goal handlers ─────────────────────────────────────────────────────────
 
   async function handleGoalConfirm(msgIdx: number, proposal: GoalProposal) {
     try {
@@ -313,12 +359,9 @@ export default function ChatScreen() {
         target_date: proposal.target_date ?? undefined,
         reasoning: proposal.reasoning,
       });
-      setGoalStates((gs) => ({
-        ...gs,
-        [msgIdx]: { status: "confirmed", goal_id: res.data.id },
-      }));
+      setGoalStates((gs) => ({ ...gs, [msgIdx]: { status: "confirmed", goal_id: res.data.id } }));
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.detail ?? "Could not create goal.");
+      Alert.alert("Error", apiErrMsg(err, "Could not create goal."));
     }
   }
 
@@ -326,27 +369,31 @@ export default function ChatScreen() {
     setGoalStates((gs) => ({ ...gs, [msgIdx]: { status: "dismissed" } }));
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   function renderMessage({ item, index }: { item: Message; index: number }) {
     const isUser = item.role === "user";
     const rState = reallocationStates[index];
     const gState = goalStates[index];
 
     return (
-      <View className={`mb-3 ${isUser ? "items-end" : "items-start"}`}>
+      <View style={{ marginBottom: 16, alignItems: isUser ? "flex-end" : "flex-start" }}>
         <View
-          className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-            isUser ? "bg-accent" : "bg-card border border-border"
-          }`}
+          style={{
+            maxWidth: "82%",
+            borderRadius: 4,
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            backgroundColor: isUser ? T.surface : T.card,
+            borderWidth: 1,
+            borderColor: isUser ? T.borderHi : T.border,
+          }}
         >
-          <Text className={`text-base leading-5 ${isUser ? "text-white" : "text-text-primary"}`}>
+          <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 26, color: T.textPrimary }}>
             {item.content}
           </Text>
         </View>
 
         {item.proposal && rState && (
-          <View className="max-w-[80%] w-[80%]">
+          <View style={{ maxWidth: "88%", width: "88%" }}>
             <ProposalCard
               state={rState}
               onConfirm={() => handleReallocationConfirm(index, item.proposal!)}
@@ -354,9 +401,7 @@ export default function ChatScreen() {
               onUndo={() =>
                 handleReallocationUndo(
                   index,
-                  rState.status === "confirmed"
-                    ? rState.audit_log_id
-                    : item.proposal!.audit_log_id
+                  rState.status === "confirmed" ? rState.audit_log_id : item.proposal!.audit_log_id
                 )
               }
             />
@@ -364,7 +409,7 @@ export default function ChatScreen() {
         )}
 
         {item.goal_proposal && gState && (
-          <View className="max-w-[80%] w-[80%]">
+          <View style={{ maxWidth: "88%", width: "88%" }}>
             <GoalProposalCard
               state={gState}
               onConfirm={() => handleGoalConfirm(index, item.goal_proposal!)}
@@ -377,10 +422,15 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
-      <View className="px-4 py-3 border-b border-border">
-        <Text className="text-text-primary text-lg font-semibold">Helm</Text>
-        <Text className="text-text-secondary text-xs">Your AI finance copilot</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      {/* Header */}
+      <View style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: T.border }}>
+        <Text style={{ fontFamily: F.serif, fontSize: 24, lineHeight: 31, color: T.textPrimary }}>
+          Helm
+        </Text>
+        <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.textDim, marginTop: 2 }}>
+          AI FINANCE COPILOT
+        </Text>
       </View>
 
       <FlatList
@@ -388,20 +438,24 @@ export default function ChatScreen() {
         data={messages}
         keyExtractor={(_, i) => String(i)}
         renderItem={renderMessage}
-        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20, paddingBottom: 8 }}
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center mt-20">
-            <Text className="text-text-secondary text-center px-8">
-              Ask me anything — "Help me set a savings goal for ₹1,00,000" or "Can I free up
-              budget for dining by cutting entertainment?"
+          <View style={{ alignItems: "center", justifyContent: "center", marginTop: 64, paddingHorizontal: 32 }}>
+            <Text style={{ fontFamily: F.serif, fontSize: 24, lineHeight: 31, color: T.textPrimary, textAlign: "center", marginBottom: 12 }}>
+              Good morning
+            </Text>
+            <Text style={{ fontFamily: F.sans, fontSize: 16, lineHeight: 26, color: T.textSecondary, textAlign: "center" }}>
+              Ask me to analyse your spending, suggest budget adjustments, or set a savings goal.
             </Text>
           </View>
         }
       />
 
       {loading && (
-        <View className="px-4 pb-2">
-          <ActivityIndicator color="#6C63FF" />
+        <View style={{ paddingHorizontal: 20, paddingBottom: 8, alignItems: "flex-start" }}>
+          <View style={{ backgroundColor: T.card, borderWidth: 1, borderColor: T.border, borderRadius: 4, paddingHorizontal: 16, paddingVertical: 10 }}>
+            <ActivityIndicator size="small" color={T.emerald} />
+          </View>
         </View>
       )}
 
@@ -409,24 +463,43 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={90}
       >
-        <View className="flex-row items-center px-4 py-3 border-t border-border gap-3">
+        <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderTopWidth: 1, borderTopColor: T.border, gap: 10 }}>
           <TextInput
-            className="flex-1 bg-card text-text-primary rounded-xl px-4 py-3 text-base border border-border"
+            style={{
+              fontFamily: F.sans,
+              fontSize: 16,
+              lineHeight: 24,
+              color: T.textPrimary,
+              paddingVertical: 8,
+              borderBottomWidth: 1,
+              borderBottomColor: T.borderHi,
+            }}
             placeholder="Message Helm..."
-            placeholderTextColor="#8888A0"
+            placeholderTextColor={T.textDim}
             value={input}
             onChangeText={setInput}
             onSubmitEditing={send}
             returnKeyType="send"
             multiline
           />
-          <TouchableOpacity
-            className="bg-accent rounded-xl px-4 py-3"
-            onPress={send}
-            disabled={loading}
-          >
-            <Text className="text-white font-semibold">Send</Text>
-          </TouchableOpacity>
+          <View style={{ alignItems: "flex-end" }}>
+            <TouchableOpacity
+              style={{
+                borderWidth: 1,
+                borderColor: T.emerald,
+                borderRadius: 4,
+                paddingHorizontal: 20,
+                paddingVertical: 10,
+                opacity: loading ? 0.5 : 1,
+              }}
+              onPress={send}
+              disabled={loading}
+            >
+              <Text style={{ fontFamily: F.sansMedium, fontSize: 11, lineHeight: 16, letterSpacing: 1.65, color: T.emerald }}>
+                SEND
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
