@@ -12,9 +12,6 @@ node_modules/
 android/app/build/
 android/build/
 android/.gradle/
-ios/build/
-ios/Pods/
-ios/DerivedData/
 android/app/release/
 ios/build/
 ios/Pods/
