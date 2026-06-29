@@ -61,4 +61,12 @@ app.include_router(receipts.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
+    from sqlalchemy import text
+    from app.core.database import engine
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail=f"Database unreachable: {exc}")
     return {"status": "ok"}

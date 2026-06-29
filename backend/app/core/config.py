@@ -4,6 +4,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     database_url: str
+    db_ssl_required: bool = False  # set True on Render/Supabase; False for local Postgres
     redis_url: str = "redis://localhost:6379/0"
     secret_key: str
     algorithm: str = "HS256"
