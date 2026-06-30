@@ -8,7 +8,7 @@ Personal finance app where an LLM agent is the primary interface. Log spending c
 
 | Layer | Choice |
 |---|---|
-| Mobile | React Native (Expo SDK 51), TypeScript, NativeWind 4.x, expo-router, @shopify/react-native-skia |
+| Mobile | React Native (Expo SDK 51), TypeScript, expo-router, @shopify/react-native-skia |
 | Backend | FastAPI, PostgreSQL (asyncpg), SQLAlchemy 2.0 async, Alembic, LangGraph, APScheduler, Redis |
 | Agent LLM | Groq (`openai/gpt-oss-120b`) — conversational agent, supervisor routing, PDF statement extraction |
 | Receipt / OCR | Google Gemini 2.5 Flash — photo receipt → structured line items |
@@ -85,10 +85,10 @@ The app uses `expo-local-authentication` and `@shopify/react-native-skia` — **
 cd mobile
 npm install
 
-# Create mobile/.env
-echo "EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api/v1" > .env
-# 10.0.2.2 routes to the host machine from the Android emulator.
-# Use your machine's LAN IP (e.g. 192.168.x.x) for a physical device.
+# Create mobile/.env pointing at your backend
+cp .env.example .env
+# For the Android emulator: EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/api/v1
+# For the deployed backend: EXPO_PUBLIC_API_URL=https://helm-euvm.onrender.com/api/v1
 
 # First run — build and install the native dev client (~10 min)
 npx expo run:android
@@ -101,6 +101,31 @@ If Metro loses connection after the emulator sleeps:
 ```bash
 adb reverse tcp:8081 tcp:8081
 ```
+
+**Physical Android device:**
+```bash
+# Target a specific device when emulator + phone are both connected
+ANDROID_SERIAL=<device-serial> npx expo run:android
+
+# Wireless development without USB — creates a public ngrok tunnel
+npx expo start --tunnel
+# Then shake the device → Dev Settings → change bundle location to the tunnel URL
+```
+
+`EXPO_PUBLIC_API_URL` is inlined at JS bundle time by Metro. Changing the backend URL requires a full Metro rebuild, not just a Gradle rebuild.
+
+### Deploying to production
+
+The production stack is Render (compute) + Supabase (Postgres). Docker is not used in production.
+
+**Supabase:** Create a new project. Use the **Session mode pooler** URL from the Supabase dashboard (`aws-REGION.pooler.supabase.com:5432`) — the direct connection hostname is IPv6-only without a paid add-on and won't work on most cloud hosts.
+
+**Render:** Deploy the `backend/` directory as a Python web service. Set all `.env.example` keys as environment variables in the Render dashboard. The start command is:
+```
+uvicorn main:app --host 0.0.0.0 --port $PORT
+```
+
+After deploying, rebuild the mobile dev client with `EXPO_PUBLIC_API_URL` pointing at your Render service URL.
 
 ---
 
