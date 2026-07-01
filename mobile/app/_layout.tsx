@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { View, StyleSheet } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -28,6 +29,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const { setUser, setUnlocked, logout } = useAuthStore();
   const router = useRouter();
+  const [bootstrapping, setBootstrapping] = useState(true);
 
   const [fontsLoaded, fontError] = useFonts({
     PlayfairDisplay_400Regular,
@@ -47,6 +49,7 @@ export default function RootLayout() {
       const hasAuth = await hasTokens();
       if (!hasAuth) {
         router.replace("/(auth)/login");
+        setBootstrapping(false);
         return;
       }
 
@@ -55,6 +58,7 @@ export default function RootLayout() {
         await clearTokens();
         logout();
         router.replace("/(auth)/login");
+        setBootstrapping(false);
         return;
       }
 
@@ -68,6 +72,8 @@ export default function RootLayout() {
         await clearTokens();
         logout();
         router.replace("/(auth)/login");
+      } finally {
+        setBootstrapping(false);
       }
     }
     bootstrap();
@@ -89,7 +95,15 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="statement-review" options={{ presentation: "modal" }} />
         </Stack>
+        {bootstrapping && <View style={styles.bootOverlay} />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  bootOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#0e1511",
+  },
+});

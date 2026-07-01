@@ -1,33 +1,23 @@
-# ─── Gradle build outputs ─────────────────────────────────────────────────────
+# OSX
+#
+.DS_Store
+
+# Android/IntelliJ
+#
 build/
-.gradle/
-app/build/
-
-# ─── Local configuration ──────────────────────────────────────────────────────
+.idea
+.gradle
 local.properties
-gradle.properties.local
-
-# ─── IDE ──────────────────────────────────────────────────────────────────────
-.idea/
 *.iml
-*.ipr
-*.iws
-
-# ─── Android Studio / IntelliJ ────────────────────────────────────────────────
-captures/
-.externalNativeBuild/
+*.hprof
 .cxx/
 
-# ─── Signing ──────────────────────────────────────────────────────────────────
+# Bundle artifacts
+*.jsbundle
+
+# Signing — never commit keystores or credentials
 *.jks
 *.keystore
 !debug.keystore
-
-# ─── Native debug ─────────────────────────────────────────────────────────────
-*.hprof
-
-# ─── Bundle artifacts ─────────────────────────────────────────────────────────
-*.jsbundle
-
-# ─── macOS ────────────────────────────────────────────────────────────────────
-.DS_Store
+keystore.properties
+KEYSTORE_INFO.local.md
